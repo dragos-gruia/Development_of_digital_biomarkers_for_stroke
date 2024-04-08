@@ -1,6 +1,8 @@
 
-# Original Author: Valentina Giunchiglia
-# Modified and adapted by: Dragos Gruia, 2023
+"""
+Updated on 5th of April 2024
+@authors: Dragos Gruia and Valentina Giunchiglia
+"""
 
 import pandas as pd
 import numpy as np 
@@ -11,36 +13,42 @@ import argparse
 import pickle
 from tqdm import tqdm
 import os 
+from base64 import b64decode
+
+import warnings
+warnings.filterwarnings('ignore')
 
 
-def main_parsing(path_to_file, dict_headers = None, data_col = "data", 
-                 col_response = 'RespObject', col_score = 'Scores', 
-                 col_rawdata = 'Rawdata'):
+def main_parsing(path_to_file, output_path, dict_headers = None, data_col = "data", 
+                 col_response = 'RespObject', col_score = 'Scores', col_speech="media", 
+                 col_rawdata = 'Rawdata', folder_structure=['/summary_data','/trial_data','/speech']):
 
     """"
     
     Main function which performs the parsing for all data types contained in
-    the raw nested json file (e.g., questionnaires, clinical tests, speech). Can be used as a wrapper function,
+    the raw nested json file (e.g., questionnaires, clinical cognitive tests, speech). Can be used as a wrapper function,
     or if specific parsing is needed, the functions below can be used individually.
     
     Parameters:
     
     path_to_file (str): path to the file to be parsed
+    output_path (str): root path to where the parsed data will be saved
     dict_headers (dict): dictionary containing the headers for the rawdata. If none is provided, the scripts will use the headers from the last datapoint in the raw data 
     data_col (str): name of the column containing the data to be parsed
     col_response (str): name of the column containing the responses to the questionnaires
-    col_scores (str): name of the column containing the summary scores of the clinical tests
+    col_score (str): name of the column containing the summary scores of the clinical tests
+    col_speech (str): name of the column containing speech
     col_rawdata (str): name of the column containing the detailed trial-by-trial raw data and speech data
+    folder_structure (list): list containing the folder structure for the parsed data
     
-    Returns:
+    Output:
     
-    Dataframe containing formatted questionnaire information and clinical test scores for each individual
+    Data split by task and organised in 3 folders. The three folders contain the following information: the summarised data, the detailed trial-level data, and the speech data. 
     
-    """"
+    """
     
-    print('File loading')
+    print('Loading files')
     
-    dfs_interest = []
     if "json" in path_to_file:
         df = load_json(path_to_file)
     elif "tsv" in path_to_file:
@@ -48,47 +56,362 @@ def main_parsing(path_to_file, dict_headers = None, data_col = "data",
     elif "csv" in path_to_file:
         df = pd.read_csv(path_to_file)
     
-    print('Data extraction')
+    print('Formatting data')
     
     if dict_headers != None:
          with open(dict_headers, "rb") as input_file:
              dict_headers = pickle.load(input_file)
     else:
         dict_headers = None
+        
     df_sep = extract_from_data(df, data_col)
+    df_sep.dropna(subset=['taskID'], inplace=True) 
+    df_sep = df_sep.reset_index(drop = True) 
     
     print('Harmonising raw data across clinical tests and handling exceptions')
     
     df_sep = task_specific_cleaning(df_sep)
-    
-    print('Questionnaires parsing')
-    
-    if col_response in df_sep.columns:
-        df_sep = separate_response_obj(df_sep, col_response = col_response)
      
-    print('Clinical scores parsing')
+    print('Cleaning clinical scores')
     
     if col_score in df_sep.columns:
         dfscore = separate_score(df_sep, col_score = col_score)
         df_sep = df_sep.drop(col_score, axis = 1)
     
-        # Merge dfs if possible:
         if len(dfscore["Level"].value_counts()) == 1:
             dfscore = dfscore.drop("Level", axis = 1)
             df_sep = pd.merge(df_sep, dfscore, how = "left", on = ["user_id", 'taskID'])
         else:
-            dfscore = dfscore.drop("Level", axis = 1)
-            dfs_interest.append(dfscore)
+            print(f'Error: Multiple levels in the same task')
     
-    print('Parsing of trial-by-trail raw data and speech')
+    print('Cleaning of trial-by-trail data and speech')
     
     if col_rawdata in df_sep.columns:
-        dfs_interest.append(rawdata(df_sep, dict_headers, col_rawdata = col_rawdata))
+        df_trial_level = rawdata(df_sep, dict_headers, col_rawdata = col_rawdata)
         df_sep = df_sep.drop(col_rawdata, axis = 1)
-    dfs_interest.append(df_sep)
+        
+    print(f'Outputting summary data in {folder_structure[0]} folder')
+    
+    output_summary_data(df_sep, output_path, folder_structure)
+    
+    print(f'Outputting trial-level data in {folder_structure[1]} folder')
 
-    return dfs_interest
+    output_trial_data(df_trial_level, df_sep, output_path, folder_structure)
+    
+    if col_response in df_sep.columns:
+        print(f'Formatting and outputting Questionnaires in {folder_structure[0]} and {folder_structure[1]} folders')
+        output_questionnaire_data(df_sep, output_path, folder_structure)
+    
+    if col_speech in df_sep.columns: 
+        print(f'Cleaning and outputting speech files in {folder_structure[2]} folder')
+        output_speech(output_path, folder_structure)
+        
+    print('Parsing and cleaning are complete')
+        
 
+def output_questionnaire_data(df_sep, output_path, folder_structure):
+    
+    """
+    
+    The function outputs formatted questionnaire-type data using the parsed summary dataframe.
+    
+    Parameters:
+    
+    df_sep (dataframe): dataframe containing the parsed data
+    output_path (str): root path to where the parsed data will be saved
+    folder_structure (list): list containing the folder structure for the parsed data
+    
+    """
+    
+    questions = [task for task in df_sep.taskID if task.startswith("q")]
+    unique_questions = list(np.unique(questions))
+    
+    new_path = folder_structure[0]
+
+    if os.path.isdir(new_path[1:]) == False:
+        os.mkdir(new_path[1:])
+
+    output_new_path = output_path + new_path
+    output_new_path
+    
+    for task in unique_questions:
+        if task in questions:
+            df_q = df_sep[df_sep["taskID"] == task]
+            df_q = df_q.dropna(axis = 1, how = "all").reset_index(drop = True)
+            df_q_resp = separate_response_obj(df_q, col_response ="RespObject" )
+            df_q_resp.to_csv(f"{output_new_path}/{task}_questionnaire.csv") 
+
+def output_summary_data(df_sep, output_path, folder_structure):
+    
+    """
+    
+    The function outputs formatted summary-type data using the parsed summary dataframe.
+    First folder in the folder structure is used as the output folder.
+    
+    Parameters:
+    
+    df_sep (dataframe): dataframe containing the parsed data
+    output_path (str): root path to where the parsed data will be saved
+    folder_structure (list): list containing the folder structure for the parsed data
+    
+    """
+    
+    os.chdir(output_path)
+
+    new_path = folder_structure[0]
+
+    if os.path.isdir(new_path[1:]) == False:
+        os.mkdir(new_path[1:])
+
+    output_new_path = output_path + new_path
+    output_new_path
+
+    #Extract summary task data
+    summarydfs = []
+    for task in np.unique(df_sep.taskID):
+        df_task = df_sep[df_sep["taskID"] == task]
+        df_task = df_task.dropna(axis = 1, how = "all")
+        df_task.to_csv(f"{output_new_path}/{task}.csv")
+        summarydfs.append(df_task)
+        
+        
+def output_trial_data(df_trial_level, df_sep, output_path, folder_structure):
+    
+    """
+    
+    The function outputs formatted trial-level-type data using parsed trial-level dataframe.
+    Second folder in the folder structure is used as the output folder.
+    
+    Parameters:
+    
+    df_trial_level (dataframe): dataframe containing the trial-level parsed data
+    df_sep (dataframe): dataframe containing the parsed data
+    output_path (str): root path to where the parsed data will be saved
+    folder_structure (list): list containing the folder structure for the parsed data
+    
+    """
+    
+    os.chdir(output_path)
+
+    new_path = folder_structure[1]
+
+    if os.path.isdir(new_path[1:]) == False:
+        os.mkdir(new_path[1:])
+
+    output_new_path = output_path + new_path
+    output_new_path
+
+    rawdfs = []
+    for task in tqdm(np.unique(df_sep.taskID)):
+        dfs_task = []
+        for df in df_trial_level:  
+            try:
+                if df.shape[0] != 0:
+                    if np.unique(df["taskID"]).item() == task:
+                        dfs_task.append(df)
+            except:
+                print(task)
+                print(df)
+                break 
+        #print(task)    
+        dff = pd.concat(dfs_task)
+        dff.to_csv(f"{output_new_path}/{task}_raw.csv")
+        rawdfs.append(dff)
+    
+def output_speech(output_path, folder_structure):
+    
+    """
+    
+    The function outputs formatted speech files, with annotations for ground truth, using the parsed summary data and trial-level data.
+    Third folder in the folder structure is used as the output.
+    
+    Parameters:
+    
+    output_path (str): root path to where the parsed data will be saved
+    folder_structure (list): list containing the folder structure for the parsed data
+    
+    """
+   
+    speech_stimuli = {
+    "IC3_Repetition": ['VILLAGE', #20 words
+        'MANNER',
+        'GRAVITY',
+        'AUDIENCE'
+        'COFFEE',
+        'PURPOSE',
+        'CONCEPT',
+        'MOMENT',
+        'TREASON',
+        'FIRE',
+        'ELEPHANT',
+        'CHARACTER',
+        'BONUS',
+        'RADIO',
+        'TRACTOR'
+        'HOSPITAL',
+        'FUNNEL',
+        'EFFORT',
+        'TRIBUTE',
+        'STUDENT'],
+    "IC3_Reading": ['if', #11 words
+        'frilt',
+        'home',
+        'to',
+        'dwelb',
+        'or',
+        'listening',
+        'and',
+        'concert',
+        'blosp',
+        'treasure'],
+    "IC3_NamingTest": ['funnel', #30 pictures
+        'tree',
+        'dominos',
+        'toothbrush',
+        'boomerang',
+        'mask',
+        'snail',
+        'acorn',
+        'scroll',
+        'seahorse',
+        'raquet',
+        'unicorn',
+        'bed',
+        'scissors',
+        'harmonica',
+        'whistle',
+        'canoe',
+        'helicopter',
+        'volcano',
+        'house',
+        'harp',
+        'dart',
+        'igloo',
+        'pencil',
+        'mushroom',
+        'saw',
+        'comb',
+        'bench',
+        'camel',
+        'hanger'],
+        "IC3_SpokenPicture": ['0', #2 pictures
+        '1'
+    ]     
+    }
+    
+    os.chdir(output_path)
+    
+    new_path = folder_structure[2]
+
+    if os.path.isdir(new_path[1:]) == False:
+        os.mkdir(new_path[1:])
+
+    output_new_path = output_path + new_path
+    output_new_path
+
+    odd_file_extensions =[]
+    for task, stimuli_values in speech_stimuli.items():
+        
+        os.chdir(output_new_path)
+        
+        speech_data = pd.read_csv((f"{output_path}{folder_structure[0]}/{task}.csv"))
+        trial_data = pd.read_csv((f"{output_path}{folder_structure[1]}/{task}_raw.csv"))
+        
+        
+        for index, sub in speech_data.iterrows():
+            
+            os.chdir(output_new_path)   
+            
+            if bool(sub.empty == False):
+                
+                voiceData = sub["media"]
+                user_id = sub["user_id"]
+                timestamp = sub.timeStamp.replace(" ","_").replace(":","_")
+                
+                if os.path.isdir(user_id) == False:
+                    os.mkdir(user_id)
+                os.chdir(user_id)
+
+                if os.path.isdir(f"{task}_{timestamp}") == False:
+                        os.mkdir(f"{task}_{timestamp}")
+                os.chdir(f"{task}_{timestamp}")   
+                
+                temp_trial_data = trial_data[trial_data.loc[:, "user_id"].isin([user_id])] 
+                
+                if (len(temp_trial_data) == 0) & (len(voiceData) < 5):
+                    print(f"User {user_id} skipped {task}")
+                    empty_file = open("no_speech.txt","w")
+                    empty_file.write("No speech files. User skipped task.")
+                    empty_file.close()
+                    continue
+                
+                if (len(temp_trial_data) > 0) & (len(voiceData) <5):
+                    print(f"User {user_id} has trial data but has no speech for {task}")
+                    empty_file = open("no_speech.txt","w")
+                    empty_file.write("No speech files. User skipped task.")
+                    empty_file.close()
+                    continue
+                
+                if (len(temp_trial_data) == 0) & (len(voiceData) >=5):
+                    print(f"User {user_id} has no trial data but has speech for {task}")
+                    continue
+                
+
+                if re.search('audio/wav',voiceData):
+                    voiceData = re.split("\'data:audio/wav;base64,",voiceData)
+                    file_extension = 'wav'
+                elif re.search('audio/mp4',voiceData):
+                    voiceData = re.split("\'data:audio/mp4;base64,",voiceData)
+                    file_extension = 'mp4'
+                    case = {'user_id': user_id, 'task': task, 'file_extension': file_extension}
+                    odd_file_extensions.append(case)
+                elif re.search('audio/webm',voiceData):
+                    voiceData = re.split("\'data:audio/webm;codecs=opus;base64,",voiceData)
+                    file_extension = 'webm'
+                    case = {'user_id': user_id, 'task': task, 'file_extension': file_extension}
+                    odd_file_extensions.append(case)
+                elif re.search('audio/ogg',voiceData):              
+                    voiceData = re.split("\'data:audio/ogg; codecs=opus;base64,",voiceData)
+                    file_extension = 'ogg'
+                    case = {'user_id': user_id, 'task': task, 'file_extension': file_extension}
+                    odd_file_extensions.append(case)
+                else:
+                    print(f"Could not find valid file extension for User {user_id} and task {task}")
+                    continue
+
+                voiceData.pop(0)
+                voiceData = list(map(lambda x: x.replace('\',', ''), voiceData))
+                
+                if task == "IC3_SpokenPicture":
+                    temp_trial_data.loc[:,"Target"] = temp_trial_data.loc[:,"Level"].astype(str)
+                
+                if len(voiceData) > len(temp_trial_data.Target):  
+                    temp_stimuli = pd.Series(stimuli_values)   
+                    if task == "IC3_Repetition":
+                        new_row = pd.DataFrame({'Target': "Unknown_stimuli"}, index=[0])
+                    else:
+                        missing_stimuli = temp_stimuli[(~temp_stimuli.isin(temp_trial_data.Target)).to_list().index(True)].upper()
+                        new_row = pd.DataFrame({'Target': missing_stimuli}, index=[0])
+
+                    temp_trial_data = pd.concat([new_row, temp_trial_data.loc[:]]).reset_index(drop=True)
+                    
+                    
+                for count,value in enumerate(voiceData):
+                    tempVoice = voiceData[count]
+                    if file_extension == 'wav':   
+                        temp_name = temp_trial_data.Target.iloc[count].upper() + '_' + str(count) + '_' + task + '_' + user_id + '.wav'  
+                    elif file_extension == 'webm':
+                        temp_name = temp_trial_data.Target.iloc[count].upper() + '_' + str(count) + '_' + task + '_' + user_id + '.webm'
+                    elif file_extension == 'mp4':
+                        temp_name = temp_trial_data.Target.iloc[count].upper() + '_' + str(count) + '_' + task + '_' + user_id + '.mp4'
+                    elif file_extension == 'ogg':
+                        temp_name = temp_trial_data.Target.iloc[count].upper() + '_' + str(count) + '_' + task + '_' + user_id + '.ogg'
+                        
+                    test_wav = open(temp_name,"wb")
+                    temp_bin = b64decode(tempVoice)
+                    test_wav.write(temp_bin)
+                    test_wav.close()
+    
 
 
 def load_json(path_to_json):
@@ -283,7 +606,7 @@ def separate_response_obj(df, col_response ="RespObject" ):
         # If old format fails, try to parse new format
         
         except:
-            print(i)
+            #print(i)
             dict_response = {}
             for ii in ex["answers"].keys():
                 if not isinstance(ex["questions"][ii], list):
@@ -389,13 +712,13 @@ def task_specific_cleaning(dfdata):
 
             columnNumber = 18
             
-            if dfdata.Rawdata[count] == '"Task Skipped"':
-                dfdata.Rawdata[count] = np.nan
+            if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
+                dfdata.loc[count,'Rawdata'] = np.nan
                 continue
             else:
-                dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
+                dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
-            splitdata = dfdata.Rawdata[count].split('\\n')
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
             valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1
@@ -409,19 +732,19 @@ def task_specific_cleaning(dfdata):
                     splitdata[i] = 'N/A\\t' + splitdata[i]
             
             splitdata = splitdata[0] + '\\n' + '\\n'.join(splitdata[2:(len(splitdata)-1)])
-            dfdata.Rawdata[count] = splitdata
+            dfdata.loc[count,'Rawdata'] = splitdata
             
         elif dfdata.taskID[count] == "IC3_NVtrailMaking3":
             
             columnNumber = 10
             
-            if dfdata.Rawdata[count] == '"Task Skipped"':
-                dfdata.Rawdata[count] = np.nan
+            if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
+                dfdata.loc[count,'Rawdata'] = np.nan
                 continue
             else:
-                dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
+                dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
-            splitdata = dfdata.Rawdata[count].split('\\n')
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
             valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1
@@ -434,24 +757,24 @@ def task_specific_cleaning(dfdata):
                     splitdata[i] = 'N/A\\t' + splitdata[i]  
             
             splitdata = '\\n'.join(splitdata)
-            dfdata.Rawdata[count] = splitdata   
+            dfdata.loc[count,'Rawdata'] = splitdata   
                     
         elif dfdata.taskID[count] == "IC3_PearCancellation":
             
-            dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
-            dfdata.Rawdata[count] = re.sub(r'(\\t+)\1', r'\1', dfdata.Rawdata[count])
+            dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
+            dfdata.loc[count,'Rawdata'] = re.sub(r'(\\t+)\1', r'\1', dfdata.loc[count,'Rawdata'])
             
-            temp_string = dfdata.Rawdata[count].split('\\n')
+            temp_string = dfdata.loc[count,'Rawdata'].split('\\n')
             
             if temp_string[1].find('ClickNumber') == -1:
-                dfdata.Rawdata[count] = temp_string[0] + '\\n' + '\\n'.join(temp_string[3:(len(temp_string)-1)])
+                dfdata.loc[count,'Rawdata'] = temp_string[0] + '\\n' + '\\n'.join(temp_string[3:(len(temp_string)-1)])
             
                 
         elif dfdata.taskID[count] == "IC3_rs_CRT":
             
-            dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
+            dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
 
-            splitdata = dfdata.Rawdata[count].split('\\n')
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
             valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1        
@@ -460,15 +783,15 @@ def task_specific_cleaning(dfdata):
                 while len(splitdata[1].split('\\t')) > len(splitdata[i].split('\\t')):
                     splitdata[i] = splitdata[i] + '\\tTRUE'
             
-            dfdata.Rawdata[count] = '\\n'.join(splitdata)
+            dfdata.loc[count,'Rawdata'] = '\\n'.join(splitdata)
             
         elif (dfdata.taskID[count] == "IC3_rs_PAL"):
             
             columnNumber = 10
             
-            dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
+            dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
-            splitdata = dfdata.Rawdata[count].split('\\n')
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
             valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1
@@ -481,14 +804,14 @@ def task_specific_cleaning(dfdata):
                     splitdata[i] = 'N/A\\t' + splitdata[i]
                     
             splitdata = '\\n'.join(splitdata)
-            dfdata.Rawdata[count] = splitdata 
+            dfdata.loc[count,'Rawdata'] = splitdata 
         elif (dfdata.taskID[count] == "IC3_BBCrs_blocks"):
             
             columnNumber = 13
             
-            dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
+            dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
-            splitdata = dfdata.Rawdata[count].split('\\n')
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
             valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1
@@ -501,12 +824,12 @@ def task_specific_cleaning(dfdata):
                     splitdata[i] = splitdata[i] + '\\tN/A'
                     
             splitdata = '\\n'.join(splitdata)
-            dfdata.Rawdata[count] = splitdata 
+            dfdata.loc[count,'Rawdata'] = splitdata 
             
         elif dfdata.taskID[count] == "IC3_Orientation":
             
-            dfdata.Rawdata[count]= re.split("GMT", dfdata.Rawdata[count])[0] + 'GMT' + re.split("GMT", dfdata.Rawdata[count])[-1]
-            dfdata.Rawdata[count] = re.sub(r'(\\t+)\1', r'\1', dfdata.Rawdata[count])
+            dfdata.loc[count,'Rawdata'] = re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
+            dfdata.loc[count,'Rawdata'] = re.sub(r'(\\t+)\1', r'\1', dfdata.loc[count,'Rawdata'])
             
     dfdata.dropna(subset=['Rawdata'], inplace=True)
     dfdata.reset_index(drop = True, inplace=True)
@@ -539,15 +862,11 @@ def rawdata(df, dict_headers=None, col_rawdata = "Rawdata"):
             listcols = dfnew["Rawdata"][len(dfnew)-1].split("\\n")[1].split("\\t")
             dict_headers[task] = listcols
             
-    print(dict_headers)
+    #print(dict_headers)
     
     if dict_headers != None:
         dfs = []
         for i in range(len(df)):
-            try:
-                taskID = df["taskID"][i]
-            except:
-                print(f'YO LOOK HERE DUMBASS {i}')
             
             taskID = df["taskID"][i]
             if taskID not in dict_headers.keys():
@@ -590,7 +909,7 @@ def rawdata(df, dict_headers=None, col_rawdata = "Rawdata"):
                 dfsub = pd.DataFrame(matching_grouped, columns=headers)
                 mask = pd.DataFrame({
                     colname:colvalues.str.contains("Time Resp|[Ff]ocus")
-                    for colname, colvalues in dfsub.iteritems()
+                    for colname, colvalues in dfsub.items()
                 })
                 dfsub = dfsub.loc[mask.sum(1) == 0]
                 dfsub["user_id"] = df["user_id"][i]

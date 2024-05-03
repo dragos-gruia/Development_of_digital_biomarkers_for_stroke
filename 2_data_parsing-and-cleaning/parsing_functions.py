@@ -16,7 +16,8 @@ import os
 from base64 import b64decode
 
 import warnings
-warnings.filterwarnings('ignore')
+warnings.simplefilter('ignore', RuntimeWarning)
+warnings.simplefilter('ignore', FutureWarning)
 
 
 def main_parsing(path_to_file, output_path, dict_headers = None, data_col = "data", 
@@ -710,8 +711,6 @@ def task_specific_cleaning(dfdata):
     for count,data in dfdata.iterrows():
         if (dfdata.taskID[count] == "IC3_NVtrailMaking") or (dfdata.taskID[count] == "IC3_NVtrailMaking2"):
 
-            columnNumber = 18
-            
             if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
                 dfdata.loc[count,'Rawdata'] = np.nan
                 continue
@@ -728,7 +727,7 @@ def task_specific_cleaning(dfdata):
                 splitdata[2] = 'PositionX\\tPositionY\\t' + splitdata[2]
                 
             for i in range(3,(len(splitdata) - valid_index)):
-                while columnNumber > len(splitdata[i].split('\\t')):
+                while len(splitdata[2].split('\\t')) > len(splitdata[i].split('\\t')):
                     splitdata[i] = 'N/A\\t' + splitdata[i]
             
             splitdata = splitdata[0] + '\\n' + '\\n'.join(splitdata[2:(len(splitdata)-1)])
@@ -736,7 +735,6 @@ def task_specific_cleaning(dfdata):
             
         elif dfdata.taskID[count] == "IC3_NVtrailMaking3":
             
-            columnNumber = 10
             
             if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
                 dfdata.loc[count,'Rawdata'] = np.nan
@@ -753,7 +751,7 @@ def task_specific_cleaning(dfdata):
                 splitdata[1] = 'PositionX\\tPositionY\\t' + splitdata[1]
             
             for i in range(2,(len(splitdata) - valid_index)):
-                while columnNumber > len(splitdata[i].split('\\t')):
+                while len(splitdata[1].split('\\t')) > len(splitdata[i].split('\\t')):
                     splitdata[i] = 'N/A\\t' + splitdata[i]  
             
             splitdata = '\\n'.join(splitdata)
@@ -787,8 +785,6 @@ def task_specific_cleaning(dfdata):
             
         elif (dfdata.taskID[count] == "IC3_rs_PAL"):
             
-            columnNumber = 10
-            
             dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
             splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
@@ -800,14 +796,12 @@ def task_specific_cleaning(dfdata):
                 splitdata[1] = 'OrderShown\\t' + splitdata[1]
                 
             for i in range(2,(len(splitdata) - valid_index)):
-                while columnNumber > len(splitdata[i].split('\\t')):
+                while len(splitdata[1].split('\\t')) > len(splitdata[i].split('\\t')):
                     splitdata[i] = 'N/A\\t' + splitdata[i]
                     
             splitdata = '\\n'.join(splitdata)
             dfdata.loc[count,'Rawdata'] = splitdata 
         elif (dfdata.taskID[count] == "IC3_BBCrs_blocks"):
-            
-            columnNumber = 13
             
             dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
@@ -820,7 +814,26 @@ def task_specific_cleaning(dfdata):
                 splitdata[1] = splitdata[1] + '\\tPractice' 
                 
             for i in range(2,(len(splitdata) - valid_index)):
-                while columnNumber > len(splitdata[i].split('\\t')):
+                while len(splitdata[1].split('\\t')) > len(splitdata[i].split('\\t')):
+                    splitdata[i] = splitdata[i] + '\\tN/A'
+                    
+            splitdata = '\\n'.join(splitdata)
+            dfdata.loc[count,'Rawdata'] = splitdata 
+            
+        elif (dfdata.taskID[count] == "IC3_calculation"):
+            
+            dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
+            
+            splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
+            start_index = int(np.round(len(splitdata)/2) - 1)
+            end_index = len(splitdata) - 1
+            valid_index = len(list(filter(lambda x: len(x.split('\\t')) == 1, splitdata[start_index:end_index]))) + 1
+            
+            if (splitdata[1].find('Equation') == -1):
+                splitdata[1] = splitdata[1] + '\\tEquation' 
+                
+            for i in range(2,(len(splitdata) - valid_index)):
+                while len(splitdata[1].split('\\t')) > len(splitdata[i].split('\\t')):
                     splitdata[i] = splitdata[i] + '\\tN/A'
                     
             splitdata = '\\n'.join(splitdata)

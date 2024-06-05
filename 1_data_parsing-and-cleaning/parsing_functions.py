@@ -18,6 +18,8 @@ from base64 import b64decode
 import warnings
 warnings.simplefilter('ignore', RuntimeWarning)
 warnings.simplefilter('ignore', FutureWarning)
+warnings.simplefilter('ignore', category=pd.errors.PerformanceWarning)
+warnings.simplefilter('ignore', category=pd.errors.SettingWithCopyWarning)
 
 
 def main_parsing(path_to_file, output_path, dict_headers = None, data_col = "data", 
@@ -139,7 +141,19 @@ def output_questionnaire_data(df_sep, output_path, folder_structure):
         if task in questions:
             df_q = df_sep[df_sep["taskID"] == task]
             df_q = df_q.dropna(axis = 1, how = "all").reset_index(drop = True)
-            df_q_resp = separate_response_obj(df_q, col_response ="RespObject" )
+            df_q_resp = separate_response_obj(df_q, col_response ="RespObject")
+            
+            if os.path.exists(f'{output_new_path}/{task}_questionnaire.csv'):
+                df_sep_old = pd.read_csv(f'{output_new_path}/{task}_questionnaire.csv')
+                df_q_resp = df_q_resp[~df_q_resp.user_id.isin(df_sep_old.user_id)]
+                if not df_q_resp.empty:
+                    df_q_resp = pd.concat([df_sep_old,df_q_resp],axis=0, sort=True)
+                    df_q_resp = df_q_resp.reset_index(drop=True)
+                    if 'Unnamed: 0' in df_q_resp.columns:
+                        df_q_resp = df_q_resp.drop(columns=['Unnamed: 0'])
+                else:
+                    continue
+                
             df_q_resp.to_csv(f"{output_new_path}/{task}_questionnaire.csv") 
 
 def output_summary_data(df_sep, output_path, folder_structure):
@@ -168,13 +182,21 @@ def output_summary_data(df_sep, output_path, folder_structure):
     output_new_path
 
     #Extract summary task data
-    summarydfs = []
     for task in np.unique(df_sep.taskID):
         df_task = df_sep[df_sep["taskID"] == task]
         df_task = df_task.dropna(axis = 1, how = "all")
+        if os.path.exists(f'{output_new_path}/{task}.csv'):
+            df_sep_old = pd.read_csv(f'{output_new_path}/{task}.csv')
+            df_task = df_task[~df_task.user_id.isin(df_sep_old.user_id)]
+            if not df_task.empty:
+                df_task = pd.concat([df_sep_old,df_task],axis=0, sort=True)
+                df_task = df_task.reset_index(drop=True)
+                if 'Unnamed: 0' in df_task.columns:
+                    df_task = df_task.drop(columns=['Unnamed: 0'])
+            else:
+                continue
         df_task.to_csv(f"{output_new_path}/{task}.csv")
-        summarydfs.append(df_task)
-        
+
         
 def output_trial_data(df_trial_level, df_sep, output_path, folder_structure):
     
@@ -202,7 +224,6 @@ def output_trial_data(df_trial_level, df_sep, output_path, folder_structure):
     output_new_path = output_path + new_path
     output_new_path
 
-    rawdfs = []
     for task in tqdm(np.unique(df_sep.taskID)):
         dfs_task = []
         for df in df_trial_level:  
@@ -214,10 +235,20 @@ def output_trial_data(df_trial_level, df_sep, output_path, folder_structure):
                 print(task)
                 print(df)
                 break 
-        #print(task)    
+  
         dff = pd.concat(dfs_task)
+        if os.path.exists(f'{output_new_path}/{task}_raw.csv'):
+            df_sep_old = pd.read_csv(f'{output_new_path}/{task}_raw.csv')
+            df_sep_old = df_sep_old.dropna(subset='Unnamed: 0')
+            dff = dff[~dff.user_id.isin(df_sep_old.user_id)]
+            dff['Unnamed: 0'] = dff.index
+            if not dff.empty:
+                dff = pd.concat([df_sep_old,dff],axis=0)
+                dff = dff.reset_index(drop=True)    
+            else:
+                continue
         dff.to_csv(f"{output_new_path}/{task}_raw.csv")
-        rawdfs.append(dff)
+
     
 def output_speech(output_path, folder_structure):
     
@@ -318,6 +349,29 @@ def output_speech(output_path, folder_structure):
         speech_data = pd.read_csv((f"{output_path}{folder_structure[0]}/{task}.csv"))
         trial_data = pd.read_csv((f"{output_path}{folder_structure[1]}/{task}_raw.csv"))
         
+        if os.listdir(output_new_path):
+            
+            list_of_subjects = os.listdir(output_new_path)
+            list_of_subjects = pd.Series([entry for entry in list_of_subjects if os.path.isdir(os.path.join(output_new_path, entry))])
+            
+            
+            old_data = []
+            for old_subjs in list_of_subjects:
+                list_of_tasks = os.listdir(f'{output_new_path}/{old_subjs}')
+                list_of_tasks = pd.Series([entry for entry in list_of_tasks if os.path.isdir(os.path.join(f'{output_new_path}/{old_subjs}', entry))])
+
+                task_found = any(task in item for item in list_of_tasks)
+                if task_found:
+                    old_data.append(old_subjs)
+            
+            old_data = pd.Series(old_data)
+            
+            if not old_data.empty:
+                speech_data = speech_data[~speech_data.user_id.isin(old_data)]
+                trial_data = trial_data[~trial_data.user_id.isin(old_data)]
+            
+            if speech_data.empty:
+                continue
         
         for index, sub in speech_data.iterrows():
             
@@ -357,7 +411,6 @@ def output_speech(output_path, folder_structure):
                     print(f"User {user_id} has no trial data but has speech for {task}")
                     continue
                 
-
                 if re.search('audio/wav',voiceData):
                     voiceData = re.split("\'data:audio/wav;base64,",voiceData)
                     file_extension = 'wav'
@@ -384,7 +437,7 @@ def output_speech(output_path, folder_structure):
                 voiceData = list(map(lambda x: x.replace('\',', ''), voiceData))
                 
                 if task == "IC3_SpokenPicture":
-                    temp_trial_data.loc[:,"Target"] = temp_trial_data.loc[:,"Level"].astype(str)
+                    temp_trial_data.loc[:,"Target"] = temp_trial_data.loc[:,"Level"].copy().astype(str)
                 
                 if len(voiceData) > len(temp_trial_data.Target):  
                     temp_stimuli = pd.Series(stimuli_values)   
@@ -502,57 +555,9 @@ def extract_from_data(df,data_col):
             return   
         
         df = df.drop(data_col, axis = 1)
-        df = extract_readable_tp(df)
         
     else:
         df
-    return df
-
-
-
-def extract_readable_tp(df):
-
-    '''
-    
-    The function converts timestamp data from milliseconds to readable timepoints
-    The dates are relative to the data collection and need to be modified
-    if needed.
-    
-    Parameters:
-    
-    df (dataframe): dataframe containing the formatted questionnaire data
-    
-    Returns: 
-    
-    Dataframe containing formatted questionnaire information with detailed information
-    about participant timepoints.
-    
-    '''
-    
-    if "startTime" in df.columns:
-        coltp = 'startTime'
-    elif "Time Resp Enabled" in df.columns:
-        coltp = "Time Resp Enabled" 
-    else:
-        pass
-    dt = pd.to_datetime(np.array(df[coltp]).astype(float), unit="ms")
-    df["timepoint"] = np.nan
-    
-    # Define when the different baseline and recontacts took place.
-    # If not needed: drop the timepoint column.
-    
-    tp1 = [pd.to_datetime("2019-12-01"), pd.to_datetime("2020-05-01")]
-    tp2 = [pd.to_datetime("2020-05-01"), pd.to_datetime("2020-12-01")]
-    tp3 = [pd.to_datetime("2020-12-01"), pd.to_datetime("2021-06-01")]
-    tp4 = [pd.to_datetime("2021-06-01"), pd.to_datetime("2022-01-01")]
-    tp5 = [pd.to_datetime("2022-01-01")]
-
-    for i, tp in enumerate([tp1, tp2, tp3, tp4, tp5]):
-        if tp != tp5:
-            tp_index = (dt >= tp[0]) & (dt < tp[1])      
-        else: 
-            tp_index = (dt >= tp[0]) 
-
     return df
 
 
@@ -681,7 +686,6 @@ def separate_score(df, col_score ="Scores"):
         df_score_cor["user_id"] = df["user_id"][i]
         df_score_cor["taskID"] = df["taskID"][i] 
         df_score_cor["startTime"] = df["startTime"][i]
-        df_score_cor = extract_readable_tp(df_score_cor)
         df_score_cor = df_score_cor.drop("startTime", axis = 1)
         df_score_cor["Level"] = [i for i in range(0, len(df_score_cor))]
         dfs_raw.append(df_score_cor)

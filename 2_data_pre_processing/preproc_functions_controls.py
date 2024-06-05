@@ -13,16 +13,18 @@ import warnings
 warnings.filterwarnings('ignore')
 
 def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of_speech, remote_data_folders='/data_ic3online_cognition', supervised_data_folders=['/data_healthy_v1','/data_healthy_v2'],
-                       folder_structure=['/summary_data','/trial_data','/speech'], output_clean_folder ='/data_healthy_cleaned', merged_data_folder='/data_healthy_merged', file_extension='.csv'):
+                       folder_structure=['/summary_data','/trial_data','/speech'], output_clean_folder ='/data_healthy_cleaned', merged_data_folder ='/data_healthy_merged', clean_file_extension='_cleaned', data_format='.csv' ):
 
     print('Starting preprocessing...')
     
     os.chdir(root_path)
-    
+
+    print('Cleaning normative data.', end="", flush=True)
     print('Creating inclusion criteria...', end="", flush=True)
     
-    ids_remote = general_outlier_detection_remoteSetting(root_path,remote_data_folders)
-    ids_supervised =  general_outlier_detection_supervisedSetting(root_path,supervised_data_folders)
+    ids_remote = general_outlier_detection_remoteSetting(root_path, remote_data_folders, screening_list = ['q_IC3_demographicsHealthy_questionnaire.csv', 'q_IC3_metacog_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv'])
+    
+    ids_supervised =  general_outlier_detection_supervisedSetting(root_path, supervised_data_folders, screening_list = ['q_IC3_demographics_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv'])
     
     inclusion_criteria = pd.concat([ids_remote, ids_supervised], ignore_index=True)
     inclusion_criteria.reset_index(drop=True,inplace=True)
@@ -32,14 +34,15 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
     
     print('Merging data across sites...', end="", flush=True)
     
-    #merge_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, merged_data_folder='/data_healthy_merged', file_extension='.csv')
+    merge_control_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, data_format, merged_data_folder)
     
     print('Done')
+    
     if list_of_tasks != None:
         for task_name in list_of_tasks:
 
             print(f'Pre-processing {task_name}...', end="", flush=True)
-            df,df_raw = remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_criteria, folder_structure, file_extension)
+            df,df_raw = remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_criteria,  data_format, folder_structure)
 
             match task_name:
                 
@@ -68,8 +71,8 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
                     df,df_raw = blocks_preproc(df,df_raw)
 
                 case 'IC3_NVtrailMaking':
-                    df2,df_raw2 = remove_general_outliers(root_path, merged_data_folder, (f'{task_name}2'), inclusion_criteria, folder_structure, file_extension)
-                    df3,df_raw3 = remove_general_outliers(root_path, merged_data_folder, (f'{task_name}3'), inclusion_criteria, folder_structure, file_extension)
+                    df2,df_raw2 = remove_general_outliers(root_path, merged_data_folder, (f'{task_name}2'), inclusion_criteria, folder_structure, data_format)
+                    df3,df_raw3 = remove_general_outliers(root_path, merged_data_folder, (f'{task_name}3'), inclusion_criteria, folder_structure, data_format)
                     df,df_raw = trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3)
                     
                 case 'IC3_rs_oddOneOut':
@@ -116,7 +119,16 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
             
             match questionnaire_name:
                 case 'q_IC3_demographics':
-                    df_demographics = demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, file_extension)
+                    df_demographics = demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format)
+                    
+                    combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format)
+                    
+                    print('Done')
+                    
+                case _:
+                    print(f'Questionnaire {questionnaire_name} does not have a specific preprocessing function.')
+                    
+
     else:
             print('No questionnaires were provided.')            
             
@@ -289,7 +301,64 @@ def general_outlier_detection_supervisedSetting(root_path, supervised_data_folde
 
     return cleaned_ids_supervised # Return participant ids that passed exclusion criteria
 
-def merge_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, merged_data_folder='/data_healthy_merged', file_extension='.csv'):
+def merge_patient_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks, merged_data_folder, data_format):
+
+    os.chdir(root_path)
+
+    # Create folder structure
+    
+    if os.path.isdir(merged_data_folder[1:]) == False:
+        os.mkdir(merged_data_folder[1:])
+    os.chdir(merged_data_folder[1:])
+
+    if os.path.isdir(folder_structure[0][1:]) == False:
+        os.mkdir(folder_structure[0][1:])
+        
+    if os.path.isdir(folder_structure[1][1:]) == False:
+        os.mkdir(folder_structure[1][1:])
+    
+    if os.path.isdir(folder_structure[2][1:]) == False:
+        os.mkdir(folder_structure[2][1:])
+        
+    # Merge data from clinical tests
+    
+    for taskName in list_of_tasks:
+            
+        os.chdir("..")
+        os.chdir(supervised_data_folders[0][1:])
+        df_v1 = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
+        df_v1_raw = pd.read_csv((f'{taskName}_raw{data_format}'), low_memory=False)
+        
+        os.chdir("..")
+        os.chdir(supervised_data_folders[1][1:])
+        
+        # Special case for IDED task that has two versions
+        
+        if taskName == "IC3_i4i_IDED": 
+            df_v2 = pd.read_csv((taskName + '2.csv'), low_memory=False)
+            df_v2_raw = pd.read_csv((taskName + '2_raw.csv'), low_memory=False)
+        else:   
+            df_v2 = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
+            df_v2_raw = pd.read_csv((taskName + '_raw.csv'), low_memory=False)
+        
+        os.chdir("..")
+        
+        os.chdir(remote_data_folders[1:])
+        df_cog = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
+        df_cog_raw = pd.read_csv((taskName + '_raw.csv'), low_memory=False)
+        
+        df = pd.concat([df_v1, df_v2, df_cog], ignore_index=True)
+        df_raw = pd.concat([df_v1_raw, df_v2_raw, df_cog_raw], ignore_index=True)
+        
+        os.chdir("..")
+        os.chdir(merged_data_folder[1:])
+        df.to_csv(f'.{folder_structure[0]}/{taskName}{data_format}', index=False)
+        df_raw.to_csv(f'.{folder_structure[1]}/{taskName}_raw.csv', index=False)
+        print(f'Merged {taskName}')
+        
+    # Merge data from speech
+
+def merge_control_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, data_format, merged_data_folder):
         
     os.chdir(root_path)
 
@@ -308,6 +377,8 @@ def merge_data_across_sites(root_path, folder_structure, supervised_data_folders
     if os.path.isdir(folder_structure[2][1:]) == False:
         os.mkdir(folder_structure[2][1:])
         
+    
+        
 
     # Merge data from clinical tests
     
@@ -315,8 +386,8 @@ def merge_data_across_sites(root_path, folder_structure, supervised_data_folders
             
         os.chdir("..")
         os.chdir(supervised_data_folders[0][1:])
-        df_v1 = pd.read_csv(f'{taskName}{file_extension}', low_memory=False)
-        df_v1_raw = pd.read_csv((f'{taskName}_raw{file_extension}'), low_memory=False)
+        df_v1 = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
+        df_v1_raw = pd.read_csv((f'{taskName}_raw{data_format}'), low_memory=False)
         
         os.chdir("..")
         os.chdir(supervised_data_folders[1][1:])
@@ -327,13 +398,13 @@ def merge_data_across_sites(root_path, folder_structure, supervised_data_folders
             df_v2 = pd.read_csv((taskName + '2.csv'), low_memory=False)
             df_v2_raw = pd.read_csv((taskName + '2_raw.csv'), low_memory=False)
         else:   
-            df_v2 = pd.read_csv(f'{taskName}{file_extension}', low_memory=False)
+            df_v2 = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
             df_v2_raw = pd.read_csv((taskName + '_raw.csv'), low_memory=False)
         
         os.chdir("..")
         
         os.chdir(remote_data_folders[1:])
-        df_cog = pd.read_csv(f'{taskName}{file_extension}', low_memory=False)
+        df_cog = pd.read_csv(f'{taskName}{data_format}', low_memory=False)
         df_cog_raw = pd.read_csv((taskName + '_raw.csv'), low_memory=False)
         
         df = pd.concat([df_v1, df_v2, df_cog], ignore_index=True)
@@ -341,7 +412,7 @@ def merge_data_across_sites(root_path, folder_structure, supervised_data_folders
         
         os.chdir("..")
         os.chdir(merged_data_folder[1:])
-        df.to_csv(f'.{folder_structure[0]}/{taskName}{file_extension}', index=False)
+        df.to_csv(f'.{folder_structure[0]}/{taskName}{data_format}', index=False)
         df_raw.to_csv(f'.{folder_structure[1]}/{taskName}_raw.csv', index=False)
         print(f'Merged {taskName}')
         
@@ -412,20 +483,51 @@ def merge_data_across_sites(root_path, folder_structure, supervised_data_folders
             
         os.chdir("..")
         os.chdir(merged_data_folder[1:])
-        df.to_csv(f'.{folder_structure[0]}/{taskName}{file_extension}', index=False)
+        df.to_csv(f'.{folder_structure[0]}/{taskName}{data_format}', index=False)
         df_raw.to_csv(f'.{folder_structure[1]}/{taskName}_raw.csv', index=False)
         print(f'Merged {taskName}')
             
     return None
 
-def demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, file_extension):
+
+def combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format):
+    
+    os.chdir(root_path + output_clean_folder + folder_structure[0])
+    
+    #Do a loop and read the data in each of the tasks
+
+    for file in list_of_tasks:
+        
+        # Read Task Data for Healthy Participants
+        temp_healthy_cog = pd.read_csv(f'{file}{clean_file_extension}{data_format}', low_memory=False)
+        
+        # Drop duplicates if any
+        temp_healthy_cog.drop_duplicates(subset='user_id', keep='last', inplace=True)
+
+        # Reset the Index
+        temp_healthy_cog.reset_index(drop=True, inplace=True)
+
+        # Merge Demographics data between patients and controls
+        task_id = temp_healthy_cog.taskID.iloc[0]       
+        temp_healthy_cog = temp_healthy_cog.loc[:,['user_id','SummaryScore']]
+        temp_healthy_cog.rename(columns={'SummaryScore':task_id}, inplace=True)
+        
+        df_demographics= pd.merge(df_demographics, temp_healthy_cog,  on="user_id", how="left")
+    
+    df_demographics.to_csv('summary_cognition_and_demographics.csv')
+    return None
+
+        
+    
+
+def demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension):
     
     os.chdir(root_path + merged_data_folder)
     try:
-        df_dem_summary = pd.read_csv(f'.{folder_structure[0]}/{questionnaire_name}{file_extension}', low_memory=False)
+        df_dem_summary = pd.read_csv(f'.{folder_structure[0]}/{questionnaire_name}{data_format}', low_memory=False)
         df_dem_summary = df_dem_summary[df_dem_summary.user_id.isin(inclusion_criteria)]
         
-        df_dem = pd.read_csv(f'.{folder_structure[1]}/{questionnaire_name}_raw{file_extension}', low_memory=False)
+        df_dem = pd.read_csv(f'.{folder_structure[1]}/{questionnaire_name}_raw{data_format}', low_memory=False)
         df_dem = df_dem[df_dem.user_id.isin(inclusion_criteria)]    
 
     except:
@@ -529,19 +631,20 @@ def demographics_preproc(root_path, merged_data_folder, questionnaire_name, incl
 
     # Save 
     
-    one_hot_encoded_data.to_csv(f'.{folder_structure[0]}/{questionnaire_name}_cleaned{file_extension}', index=False)
+    one_hot_encoded_data.to_csv(f'.{folder_structure[0]}/{questionnaire_name}{clean_file_extension}{data_format}', index=False)
     
     return one_hot_encoded_data
-            
-def remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_criteria, folder_structure=['/summary_data','/trial_data','/speech'], file_extension='.csv'):
+
+  
+def remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_criteria,  data_format, folder_structure=['/summary_data','/trial_data','/speech']):
     
     os.chdir(root_path + merged_data_folder)
     
     try:
-        df = pd.read_csv(f'.{folder_structure[0]}/{task_name}{file_extension}', low_memory=False)
+        df = pd.read_csv(f'.{folder_structure[0]}/{task_name}{data_format}', low_memory=False)
         df = df[df.user_id.isin(inclusion_criteria)]
 
-        df_raw = pd.read_csv(f'.{folder_structure[1]}/{task_name}_raw{file_extension}', low_memory=False)
+        df_raw = pd.read_csv(f'.{folder_structure[1]}/{task_name}_raw{data_format}', low_memory=False)
         df_raw = df_raw[df_raw.user_id.isin(inclusion_criteria)]
     except:
         print(f'Error in loading {task_name}. File might not exist.')
@@ -560,7 +663,7 @@ def remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_
 
     return df,df_raw
 
-def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure):
+def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format):
     
     os.chdir(root_path)
     
@@ -569,8 +672,8 @@ def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_s
         os.mkdir(f'.{output_clean_folder}{folder_structure[0]}')
         os.mkdir(f'.{output_clean_folder}{folder_structure[1]}')
 
-    df.to_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}_cleaned.csv", index=False)
-    df_raw.to_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw_cleaned.csv")
+    df.to_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}{clean_file_extension}{data_format}", index=False)
+    df_raw.to_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw{clean_file_extension}{data_format}")
 
     return None
 

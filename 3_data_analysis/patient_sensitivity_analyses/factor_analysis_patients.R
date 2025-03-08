@@ -8,6 +8,8 @@ library(corrr)
 library(datawizard)
 library(stats)
 library(stringr)
+library(magrittr)
+
 options(mc.cores = 8)
 
 # Loading and formatting the data --------

@@ -31,9 +31,12 @@ df = read.csv('ic3_healthy_cleaned_cog_and_demographics.csv')
 df_speech = read.csv('data_summaryScore_speech_normative.csv')
 
 df_speech %<>% 
-  rename(english_secondLanguage = english)
+  rename(english_secondLanguage = english) %>%
+  mutate(user_id = if_else(user_id =="", ID, user_id))
 
-df_speech = df_speech[,c('naming','n_events_naming', 'reading','n_events_reading', 'repetition', 'n_events_repetition','user_id')]
+
+
+#df_speech = df_speech[,c('naming','n_events_naming', 'reading','n_events_reading', 'repetition', 'n_events_repetition','user_id')]
 df = full_join(df, df_speech, by = c("user_id","age",'gender','english_secondLanguage','education_Alevels','education_bachelors','education_postBachelors','device_phone','device_tablet'))
 
 
@@ -140,6 +143,7 @@ for (task in linTaskList) {
   
   df = df_clean
   x_test = x_test_clean
+  
   print(task)
 }
 

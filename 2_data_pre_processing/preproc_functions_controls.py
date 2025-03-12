@@ -12,40 +12,98 @@ import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of_speech, remote_data_folders='/data_ic3online_cognition', supervised_data_folders=['/data_healthy_v1','/data_healthy_v2'],
-                       folder_structure=['/summary_data','/trial_data','/speech'], output_clean_folder ='/data_healthy_cleaned', merged_data_folder ='/data_healthy_combined', clean_file_extension='_cleaned', data_format='.csv' ):
+def main_preprocessing(
+    root_path,
+    list_of_tasks,
+    list_of_questionnaires,
+    list_of_speech,
+    remote_data_folders='/data_ic3online_cognition',
+    supervised_data_folders=['/data_healthy_v1', '/data_healthy_v2'],
+    folder_structure=['/summary_data', '/trial_data', '/speech'],
+    output_clean_folder='/data_healthy_cleaned',
+    merged_data_folder='/data_healthy_combined',
+    clean_file_extension='_cleaned',
+    data_format='.csv'
+):
+    
+    """
+    Main wrapper function that cleans normative data, creates inclusion criteria,
+    merges data across sites, and preprocesses tasks and questionnaires.
 
+    Parameters
+    ----------
+    root_path : str
+        The root directory for processing.
+    list_of_tasks : list of str
+        List of task names to process.
+    list_of_questionnaires : list of str
+        List of questionnaire names to process.
+    list_of_speech : list of str
+        List of speech file identifiers.
+    remote_data_folders : str, optional
+        Remote data folder path (default: '/data_ic3online_cognition').
+    supervised_data_folders : list of str, optional
+        List of supervised data folder paths (default: ['/data_healthy_v1', '/data_healthy_v2']).
+    folder_structure : list of str, optional
+        Folder structure used (default: ['/summary_data', '/trial_data', '/speech']).
+    output_clean_folder : str, optional
+        Output folder for cleaned data (default: '/data_healthy_cleaned').
+    merged_data_folder : str, optional
+        Folder for merged data (default: '/data_healthy_combined').
+    clean_file_extension : str, optional
+        Suffix to append to cleaned files (default: '_cleaned').
+    data_format : str, optional
+        Data file format (default: '.csv').
+    """
+    
     print('Starting preprocessing...')
-    
-    os.chdir(root_path)
 
-    print('Cleaning normative data.', end="", flush=True)
-    print('Creating inclusion criteria...', end="", flush=True)
+    # Build an absolute path for root_path
+    root_path = os.path.abspath(root_path)
     
-    ids_remote = general_outlier_detection_remoteSetting(root_path, remote_data_folders, folder_structure, screening_list = ['q_IC3_demographicsHealthy_questionnaire.csv', 'q_IC3_metacog_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv'])
+    # Ensure merged data folder exists (strip leading '/' for relative joining)
+    merged_data_dir = os.path.join(root_path, merged_data_folder.lstrip('/'))
+    ensure_directory(merged_data_dir)
+
+
+    # ----- Cleaning normative data and compiling inclusion criteria -----
     
-    ids_supervised =  general_outlier_detection_supervisedSetting(root_path, supervised_data_folders, folder_structure, screening_list = ['q_IC3_demographics_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv'])
     
-    inclusion_criteria = pd.concat([ids_remote, ids_supervised], ignore_index=True)
-    inclusion_criteria.reset_index(drop=True,inplace=True)
-    if not os.path.isdir(merged_data_folder[1:]):
-        os.mkdir(merged_data_folder[1:])
-        
-    inclusion_criteria.to_csv(f'{root_path}{merged_data_folder}/inclusion_criteria.csv', index=False)
+    print('Cleaning normative data. Creating inclusion criteria...', end="", flush=True)
+
+    inclusion_criteria = create_inclusion_criteria(root_path, remote_data_folders, supervised_data_folders, folder_structure)
+
+    # Save inclusion criteria
+    inclusion_criteria_path = os.path.join(merged_data_dir, 'inclusion_criteria.csv')
+    inclusion_criteria.to_csv(inclusion_criteria_path, index=False)
     print('Done')
+
+
+    # ----- Merging data across sites -----
+    
     
     print('Merging data across sites...', end="", flush=True)
-    
-    list_of_tasks = merge_control_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, data_format, merged_data_folder)
-
+    list_of_tasks = merge_control_data_across_sites(
+        root_path, folder_structure, supervised_data_folders, remote_data_folders,
+        list_of_tasks, list_of_questionnaires, list_of_speech, data_format, merged_data_folder
+    )
     print('Done')
     
-    if list_of_tasks != None:
+    
+    # ----- Pre-processing task data -----
+    
+    
+    if list_of_tasks:
+        
         for task_name in list_of_tasks:
-
+            
+            # Process a single task by first removing general outliers and then applying a task-specific preprocessing
             print(f'Pre-processing {task_name}...', end="", flush=True)
-            df,df_raw = remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_criteria,  data_format, folder_structure)
-
+            
+            df, df_raw = remove_general_outliers(
+                root_path, merged_data_folder, task_name, inclusion_criteria, data_format, folder_structure
+            )
+            
             match task_name:
                 
                 case 'IC3_Orientation':  
@@ -113,35 +171,64 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
     else:
         print('No tasks were provided.') 
         
-                   
-    if list_of_questionnaires != None:
+    # ----- Cleaning questionnaire data -----    
+        
+    if list_of_questionnaires:
         for questionnaire_name in list_of_questionnaires:
-
-            print(f'Pre-processing {questionnaire_name}...', end="", flush=True)
-            
-            match questionnaire_name:
-                case 'q_IC3_demographics':
-                    df_demographics = demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format,clean_file_extension)
-                    
-                    combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format)
-                    
-                    print('Done')
-                    
-                case _:
-                    print(f'Questionnaire {questionnaire_name} does not have a specific preprocessing function.')
-                    
-
+            process_questionnaire(questionnaire_name, root_path, merged_data_folder, inclusion_criteria,
+                                  folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks)
     else:
-            print('No questionnaires were provided.')            
-            
+        print('No questionnaires were provided.')
+                   
         
     print('Preprocessing complete.')      
 
 
+def ensure_directory(path):
+    """Checks if directory exists, creates it if it does not exist."""
+    if not os.path.isdir(path):
+        os.makedirs(path, exist_ok=True)
 
-def general_outlier_detection_remoteSetting(root_path, remote_data_folder, folder_structure, screening_list = ['q_IC3_demographicsHealthy_questionnaire.csv', 'q_IC3_metacog_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv']): 
 
-    os.chdir(root_path + remote_data_folder + folder_structure[0])
+def create_inclusion_criteria(root_path, remote_data_folders, supervised_data_folders, folder_structure):
+    """
+    Generate the inclusion criteria by performing outlier detection on remote and supervised data.
+    """
+
+    ids_remote = general_outlier_detection_remoteSetting(
+        root_path, remote_data_folders, folder_structure
+    )
+    ids_supervised = general_outlier_detection_supervisedSetting(
+        root_path, supervised_data_folders, folder_structure
+    )
+    
+    inclusion_criteria = pd.concat([ids_remote, ids_supervised], ignore_index=True)
+    inclusion_criteria.reset_index(drop=True, inplace=True)
+    
+    return inclusion_criteria
+
+
+def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inclusion_criteria, folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks):
+    """
+    Process a questionnaire using a match-case structure.
+    """
+    print(f'Pre-processing {questionnaire_name}...', end="", flush=True)
+    match questionnaire_name:
+        case 'q_IC3_demographics':
+            df_demographics = demographics_preproc(
+                root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension
+            )
+            combine_demographics_and_cognition(
+                root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format
+            )
+            print('Done')
+        case _:
+            print(f'\nQuestionnaire {questionnaire_name} does not have a specific preprocessing function.')
+
+
+def general_outlier_detection_remoteSetting(root_path, remote_data_folders, folder_structure, screening_list = ['q_IC3_demographicsHealthy_questionnaire.csv', 'q_IC3_metacog_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv']): 
+
+    os.chdir(root_path + remote_data_folders + folder_structure[0])
         
     # Read the questionnaire data to check for exclusion criteria
 

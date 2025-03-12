@@ -1,7 +1,7 @@
 
 """
 Updated on 5th of April 2024
-@authors: Dragos Gruia and Valentina Giunchiglia
+@authors: Created by Valentina Giunchiglia and adapted by Dragos Gruia
 """
 
 import pandas as pd

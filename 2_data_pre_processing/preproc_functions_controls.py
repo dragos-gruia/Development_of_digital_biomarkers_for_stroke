@@ -216,7 +216,7 @@ def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inc
     match questionnaire_name:
         case 'q_IC3_demographics':
             df_demographics = demographics_preproc(
-                root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension
+                root_path, merged_data_folder, output_clean_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension
             )
             combine_demographics_and_cognition(
                 root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format
@@ -226,456 +226,668 @@ def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inc
             print(f'\nQuestionnaire {questionnaire_name} does not have a specific preprocessing function.')
 
 
-def general_outlier_detection_remoteSetting(root_path, remote_data_folders, folder_structure, screening_list = ['q_IC3_demographicsHealthy_questionnaire.csv', 'q_IC3_metacog_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv']): 
+def general_outlier_detection_remoteSetting(root_path, remote_data_folders, folder_structure, 
+                                              screening_list=None):
+    """
+    Detect outliers in remote setting data by loading multiple screening questionnaires,
+    cleaning and merging them, and then applying exclusion criteria.
 
-    os.chdir(root_path + remote_data_folders + folder_structure[0])
+    Parameters
+    ----------
+    root_path : str
+        The root directory.
+    remote_data_folder : str
+        Remote data folder name (e.g. '/data_ic3online_cognition').
+    folder_structure : list of str
+        List containing folder names; the first element is used to locate summary data.
+    screening_list : list of str, optional
+        List of questionnaire filenames. Defaults to:
+        ['q_IC3_demographicsHealthy_questionnaire.csv',
+         'q_IC3_metacog_questionnaire.csv',
+         'IC3_Orientation.csv',
+         'IC3_PearCancellation.csv'].
+
+    Returns
+    -------
+    pandas.Series
+        A Series of user IDs that pass all exclusion criteria.
+    """
+    
+    if screening_list is None:
+        screening_list = [
+            'q_IC3_demographicsHealthy_questionnaire.csv',
+            'q_IC3_metacog_questionnaire.csv',
+            'IC3_Orientation.csv',
+            'IC3_PearCancellation.csv'
+        ]
         
-    # Read the questionnaire data to check for exclusion criteria
+    # Build the base path for the remote data
+    base_path = os.path.join(root_path, remote_data_folders.lstrip('/'), folder_structure[0].lstrip('/'))
+    
+    # Load screening questionnaires from file paths
+    df_dem    = pd.read_csv(os.path.join(base_path, screening_list[0]), low_memory=False)
+    df_cheat  = pd.read_csv(os.path.join(base_path, screening_list[1]), low_memory=False)
+    df_orient = pd.read_csv(os.path.join(base_path, screening_list[2]), low_memory=False)
+    df_pear   = pd.read_csv(os.path.join(base_path, screening_list[3]), low_memory=False)
+    
+    # Define a helper to remove duplicate and missing user IDs
+    def clean_df(df):
+        return df.drop_duplicates(subset=['user_id'], keep="first").dropna(subset=['user_id']).reset_index(drop=True)
+    
+    df_dem    = clean_df(df_dem)
+    df_cheat  = clean_df(df_cheat)
+    df_orient = clean_df(df_orient)
+    df_pear   = clean_df(df_pear)
+        
+    # Keep only users present in both demographics and Pear Cancellation data
+    common_ids = set(df_dem['user_id']) ^ set(df_pear['user_id'])
 
-    df_dem = pd.read_csv(screening_list[0], low_memory=False)
-    df_cheat = pd.read_csv(screening_list[1], low_memory=False)
-    df_orient = pd.read_csv(screening_list[2], low_memory=False)
-    df_pear = pd.read_csv(screening_list[3], low_memory=False)
-
-    # Remove duplicates
-
-    df_dem.drop_duplicates(subset=['user_id'],keep="first", inplace=True)
-    df_cheat.drop_duplicates(subset=['user_id'], keep="first", inplace=True)
-    df_orient.drop_duplicates(subset=['user_id'],keep="first", inplace=True)
-    df_pear.drop_duplicates(subset=['user_id'], keep="first", inplace=True)
-
-    # Remove NAs
-
-    df_dem.dropna(subset=['user_id'], inplace=True)
-    df_cheat.dropna(subset=['user_id'], inplace=True)
-    df_orient.dropna(subset=['user_id'], inplace=True)
-    df_pear.dropna(subset=['user_id'], inplace=True)
-
-    # Keep only the people who have done both the demographics and the screening tests.
-
-    cleaned_ids_remote = list(set(df_pear['user_id']).intersection(set(df_pear['user_id']),set(df_dem['user_id'])))
-    df_pear = df_pear[df_pear.user_id.isin(cleaned_ids_remote)].reset_index(drop=True)  
-    df_orient = df_orient[df_orient.user_id.isin(cleaned_ids_remote)].reset_index(drop=True)  
-    df_dem = df_dem[df_dem.user_id.isin(cleaned_ids_remote)].reset_index(drop=True)
-    df_cheat = df_cheat[df_cheat.user_id.isin(cleaned_ids_remote)].reset_index(drop=True)  
-
-
+    for df in (df_dem, df_orient, df_pear, df_cheat):
+        df.drop(df[df['user_id'].isin(common_ids)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        
     # Clean the questionnaire data
+    df_dem['Q30_R'] = df_dem['Q30_R'].replace("No", "SKIPPED").replace("SKIPPED", 999999).astype(float)
+    for col in ["Q2_S", "Q3_S"]:
+        df_cheat[col].replace([0, 1], np.nan, inplace=True)
+    df_cheat.dropna(subset=["Q2_S", "Q3_S"], inplace=True)
+    df_cheat.reset_index(drop=True, inplace=True)
+        
+    # Remove users who fail screening tests based on SummaryScore criteria
+    # Vectorized approach: identify user_ids that meet both failure conditions.
+    fail_orient = set(df_orient.loc[df_orient['SummaryScore'] < 3, 'user_id'])
+    fail_pear   = set(df_pear.loc[df_pear['SummaryScore'] <= 0.80, 'user_id'])
+    failed_ids  = fail_orient & fail_pear    
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(failed_ids)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
 
-    df_dem.Q30_R.replace("No", "SKIPPED", inplace=True)
-    df_dem.Q30_R.replace("SKIPPED", 999999, inplace=True)
-    df_dem.Q30_R = df_dem.Q30_R.astype(float)
+    print(f'We removed {len(failed_ids)} people who failed both Orientation and Pear Cancellation, from all tasks.')
+    
+    # Remove users not neurologically healthy (using demographics responses)
+    unhealthy_mask = ((df_dem['Q12_R'] != "SKIPPED") | (df_dem['Q14_R'] != "SKIPPED") |
+                      (df_dem['Q30_R'] <= 60) | (df_dem['Q1_R'] < 40))
+    unhealthy_mask = df_dem.loc[unhealthy_mask,'user_id']
+    neuro_removed = ((df_dem['Q12_R'] != "SKIPPED") | (df_dem['Q14_R'] != "SKIPPED")).sum()
+    dementia_removed = (df_dem['Q30_R'] <= 60).sum()
+    age_removed = (df_dem['Q1_R'] < 40).sum()
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(unhealthy_mask)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
 
-    df_cheat["Q2_S"].replace([0,1], np.nan, inplace=True)
-    df_cheat["Q3_S"].replace([0,1], np.nan, inplace=True)
-    df_cheat.dropna(subset=["Q2_S"], inplace=True)
-    df_cheat.dropna(subset=["Q3_S"], inplace=True)
-    df_cheat.reset_index(drop=True,inplace=True)
-
-    # Drop the user_id, if they fail the screening test
-
-    ids_failed_screen = []
-    for subs in cleaned_ids_remote:
-        if (df_orient[df_orient.user_id == subs].SummaryScore < 3).bool() and (df_pear[df_pear.user_id == subs].SummaryScore <= 0.80).bool():
-            
-            ids_failed_screen.append(subs)
-            df_dem = df_dem.drop(df_dem[df_dem.user_id == subs].index).reset_index(drop=True)
-            df_orient = df_orient.drop(df_orient[df_orient.user_id == subs].index).reset_index(drop=True)
-            df_pear = df_pear.drop(df_pear[df_pear.user_id == subs].index).reset_index(drop=True)
-
-    print(f'We removed {len(ids_failed_screen)} people who failed both Orientation and Pear Cancellation, from all tasks.')
-
-
-    # Update the user_ids list to only include the people who passed the screening test
-
-    cleaned_ids_remote = df_pear.user_id
-
-    # Remove people who are not neurologically healthy
-
-    to_remove = (df_dem.Q12_R != "SKIPPED") | (df_dem.Q14_R != "SKIPPED") | (df_dem.Q30_R <= 60) | (df_dem.Q1_R < 40)    
-    print(f'We removed {sum((df_dem.Q12_R != "SKIPPED") | (df_dem.Q14_R != "SKIPPED"))} who indicated they have a neurological disorder, {sum(df_dem.Q30_R <= 60)} who have a history of dementia and {sum(df_dem.Q1_R < 40)} who are younger than 40.')
-
-    df_dem = df_dem[~to_remove].reset_index(drop=True)
-    df_pear = df_pear[~to_remove].reset_index(drop=True)
-    df_orient = df_orient[~to_remove].reset_index(drop=True)
-
-    cleaned_ids_remote = df_pear.user_id
-
-
-    # Remove people who self-reeported lack of engagement
-    cheating_ids = cleaned_ids_remote.isin(df_cheat.user_id)
-    df_dem = df_dem[~cheating_ids].reset_index(drop=True)
-    df_pear = df_pear[~cheating_ids].reset_index(drop=True)
-    df_orient = df_orient[~cheating_ids].reset_index(drop=True)
-
-    print(f'We removed {cheating_ids.sum()} people who cheated.')
-    cleaned_ids_remote = df_pear.user_id
+    print(f'We removed {neuro_removed} who indicated neurological disorder, '
+          f'{dementia_removed} with a history of dementia and {age_removed} who are younger than 40.')
+    
+    # Remove users who self-reported lack of engagement ("cheating")
+    cheating_mask = df_pear['user_id'].isin(df_cheat['user_id'])
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(df_cheat['user_id'])].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+    
+    print(f'We removed {cheating_mask.sum()} people who cheated.')
+    
+    # Return the final cleaned user IDs from df_pear as a Series
+    cleaned_ids_remote = df_pear['user_id']
+    
+    return cleaned_ids_remote
 
 
-    return cleaned_ids_remote # Return participant ids that passed exclusion criteria
+def general_outlier_detection_supervisedSetting(root_path, supervised_data_folders, folder_structure, 
+                                                  screening_list=None):
+    """
+    Detect outliers in supervised setting data by loading two timepoints of screening questionnaires,
+    cleaning and merging them, and then applying exclusion criteria.
 
+    Parameters
+    ----------
+    root_path : str
+        The root directory.
+    supervised_data_folders : list of str
+        List containing folder names for the two timepoints (e.g. [folder_v1, folder_v2]).
+    folder_structure : list of str
+        List containing folder names; the first element is used to locate summary data.
+    screening_list : list of str, optional
+        List of questionnaire filenames. Defaults to:
+        ['q_IC3_demographics_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv'].
 
-def general_outlier_detection_supervisedSetting(root_path, supervised_data_folders, folder_structure, screening_list = ['q_IC3_demographics_questionnaire.csv', 'IC3_Orientation.csv', 'IC3_PearCancellation.csv']): 
-
-    # Read the data for v1
-
-    os.chdir(root_path + supervised_data_folders[0] + folder_structure[0])
-
-    df_dem_tp1 = pd.read_csv(screening_list[0], low_memory=False)
-    df_orient_tp1 = pd.read_csv(screening_list[1], low_memory=False)
-    df_pear_tp1 = pd.read_csv(screening_list[2], low_memory=False)
-
-    # Read the data for v2
-
-    os.chdir(root_path + supervised_data_folders[1] + folder_structure[0])
-
-    df_dem_tp2 = pd.read_csv(screening_list[0], low_memory=False)
-    df_orient_tp2 = pd.read_csv(screening_list[1], low_memory=False)
-    df_pear_tp2 = pd.read_csv(screening_list[2], low_memory=False)
-
+    Returns
+    -------
+    pandas.Series
+        A Series of user IDs that pass all exclusion criteria.
+    """
+    if screening_list is None:
+        screening_list = [
+            'q_IC3_demographics_questionnaire.csv',
+            'IC3_Orientation.csv',
+            'IC3_PearCancellation.csv'
+        ]
+    
+    def load_timepoint_data(data_folder):
+        """Helper function to load data for a given timepoint."""
+        base_path = os.path.join(root_path, data_folder.lstrip('/'), folder_structure[0].lstrip('/'))
+        df_dem    = pd.read_csv(os.path.join(base_path, screening_list[0]), low_memory=False)
+        df_orient = pd.read_csv(os.path.join(base_path, screening_list[1]), low_memory=False)
+        df_pear   = pd.read_csv(os.path.join(base_path, screening_list[2]), low_memory=False)
+        return df_dem, df_orient, df_pear
+    
+    # Load data for both timepoints
+    df_dem_tp1, df_orient_tp1, df_pear_tp1 = load_timepoint_data(supervised_data_folders[0])
+    df_dem_tp2, df_orient_tp2, df_pear_tp2 = load_timepoint_data(supervised_data_folders[1])
+    
     # Concatenate the two timepoints
-
-    df_dem = pd.concat([df_dem_tp1, df_dem_tp2], ignore_index=True)
+    df_dem    = pd.concat([df_dem_tp1, df_dem_tp2], ignore_index=True)
     df_orient = pd.concat([df_orient_tp1, df_orient_tp2], ignore_index=True)
-    df_pear = pd.concat([df_pear_tp1, df_pear_tp2], ignore_index=True)
-
-    # Remove duplicates, NAs and reset index
-
-    df_dem.drop_duplicates(subset=['user_id'],keep="first", inplace=True)
-    df_dem.dropna(subset=['user_id'], inplace=True)
-    df_dem.reset_index(drop=True, inplace=True)
-
-    df_orient.drop_duplicates(subset=['user_id'],keep="first", inplace=True)
-    df_orient.dropna(subset=['user_id'], inplace=True)
-    df_orient.reset_index(drop=True, inplace=True)
-
-    df_pear.drop_duplicates(subset=['user_id'],keep="first", inplace=True)
-    df_pear.dropna(subset=['user_id'], inplace=True)
-    df_pear.reset_index(drop=True, inplace=True)
-
-    # Find the user_id who are in both df_pear and df_pear
-
-    cleaned_ids_supervised = list(set(df_dem['user_id']).intersection(set(df_orient['user_id'])).intersection(set(df_pear['user_id'])))
-
-    df_pear = df_pear[df_pear.user_id.isin(cleaned_ids_supervised)]  
-    df_orient = df_orient[df_orient.user_id.isin(cleaned_ids_supervised)]  
-    df_dem = df_dem[df_dem.user_id.isin(cleaned_ids_supervised)]  
-
-    # Drop the user_id, if they fail the screening test
-
-    ids_failed_screen = []
-    for subs in cleaned_ids_supervised:
-        if (df_orient[df_orient.user_id == subs].SummaryScore < 3).bool() and (df_pear[df_pear.user_id == subs].SummaryScore <= 0.80).bool():
-            
-            ids_failed_screen.append(subs)
-            df_dem = df_dem.drop(df_dem[df_dem.user_id == subs].index).reset_index(drop=True)
-            df_orient = df_orient.drop(df_orient[df_orient.user_id == subs].index).reset_index(drop=True)
-            df_pear = df_pear.drop(df_pear[df_pear.user_id == subs].index).reset_index(drop=True)
-
-    print(f'We removed {len(ids_failed_screen)} people who failed both Orientation and Pear Cancellation, from all tasks.')
-
-
-    cleaned_ids_supervised = df_pear.user_id
-
-    # Remove people who are not neurologically healthy
-
-    to_remove = (df_dem.Q12_R != "SKIPPED") | (df_dem.Q14_R != "SKIPPED") | (df_dem.Q1_R < 40)    
-    print(f'We removed {sum((df_dem.Q12_R != "SKIPPED") | (df_dem.Q14_R != "SKIPPED"))} who indicated they have a neurological disorder, and {sum(df_dem.Q1_R < 40)} who are younger than 40.')
-
-    df_dem = df_dem[~to_remove].reset_index(drop=True)
-    df_pear = df_pear[~to_remove].reset_index(drop=True)
-    df_orient = df_orient[~to_remove].reset_index(drop=True)
-
-    cleaned_ids_supervised = df_pear.user_id
-
-    return cleaned_ids_supervised # Return participant ids that passed exclusion criteria
-
-
-
-def merge_control_data_across_sites(root_path, folder_structure, supervised_data_folders, remote_data_folders, list_of_tasks,list_of_questionnaires,list_of_speech, data_format, merged_data_folder):
-        
-    os.chdir(root_path)
-
-    # Create folder structure
+    df_pear   = pd.concat([df_pear_tp1, df_pear_tp2], ignore_index=True)
     
-    if not os.path.isdir(merged_data_folder[1:]):
-        os.mkdir(merged_data_folder[1:])
-    os.chdir(merged_data_folder[1:])
-
-    if not os.path.isdir(folder_structure[0][1:]):
-        os.mkdir(folder_structure[0][1:])
-        
-    if not os.path.isdir(folder_structure[1][1:]):
-        os.mkdir(folder_structure[1][1:])
+    def clean_df(df):
+        """Remove duplicates and missing user IDs, then reset index."""
+        return df.drop_duplicates(subset=['user_id'], keep='first') \
+                 .dropna(subset=['user_id']) \
+                 .reset_index(drop=True)
     
-    if not os.path.isdir(folder_structure[2][1:]):
-        os.mkdir(folder_structure[2][1:])
-
-    # Merge data from clinical tests
+    # Clean dataframes
+    df_dem    = clean_df(df_dem)
+    df_orient = clean_df(df_orient)
+    df_pear   = clean_df(df_pear)
     
-    if 'IC3_NVtrailMaking' in list_of_tasks:
-        list_of_tasks.append('IC3_NVtrailMaking2')
-        list_of_tasks.append('IC3_NVtrailMaking3')
-
-    for taskName in list_of_tasks:
-        
-        summary_task_path = root_path + supervised_data_folders[0] + folder_structure[0]
-        raw_task_path = root_path + supervised_data_folders[0] + folder_structure[1]
-        
-        df_v1 = pd.read_csv(f'{summary_task_path}/{taskName}{data_format}', low_memory=False)
-        df_v1_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw{data_format}'), low_memory=False)
-        
-        summary_task_path = root_path + supervised_data_folders[1] + folder_structure[0]
-        raw_task_path = root_path + supervised_data_folders[1] + folder_structure[1]
-        
-        # Special case for IDED task that has two versions
-        
-        if taskName == "IC3_i4i_IDED": 
-            df_v2 = pd.read_csv((f'{summary_task_path}/{taskName}2{data_format}'), low_memory=False)
-            df_v2_raw = pd.read_csv((f'{raw_task_path}/{taskName}2_raw{data_format}'), low_memory=False)
-        else:   
-            df_v2 = pd.read_csv(f'{summary_task_path}/{taskName}{data_format}', low_memory=False)
-            df_v2_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw{data_format}'), low_memory=False)
-        
-        
-        summary_task_path = root_path + remote_data_folders + folder_structure[0]
-        raw_task_path = root_path + remote_data_folders + folder_structure[1]
-
-        df_cog = pd.read_csv(f'{summary_task_path}/{taskName}{data_format}', low_memory=False)
-        df_cog_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw{data_format}'), low_memory=False)
-        
-        df = pd.concat([df_v1, df_v2, df_cog], ignore_index=True)
-        df_raw = pd.concat([df_v1_raw, df_v2_raw, df_cog_raw], ignore_index=True)
-        
-        output_folder = root_path + merged_data_folder
-        
-        df.to_csv(f'{output_folder}/{folder_structure[0]}/{taskName}{data_format}', index=False)
-        df_raw.to_csv(f'{output_folder}/{folder_structure[1]}/{taskName}_raw{data_format}', index=False)
-        #print(f'Merged {taskName}')
-        
-    if 'IC3_NVtrailMaking' in list_of_tasks:
-        list_of_tasks = list_of_tasks[:-2]
-        
-    # Merge data from speech
-        
-    for taskName in list_of_speech:
-        
-        raw_speech_path = root_path + supervised_data_folders[0] + folder_structure[1]
-        df_v1_raw = pd.read_csv((f'{raw_speech_path}/{taskName}_raw{data_format}'), low_memory=False)
-        
-        raw_speech_path = root_path + supervised_data_folders[1] + folder_structure[1]
-        df_v2_raw = pd.read_csv((f'{raw_speech_path}/{taskName}_raw{data_format}'), low_memory=False)
-
-        df_raw = pd.concat([df_v1_raw, df_v2_raw], ignore_index=True)
-        
-        output_folder = root_path + merged_data_folder
-        df_raw.to_csv(f'{output_folder}/{folder_structure[1]}/{taskName}_raw.csv', index=False)
-        #print(f'Merged {taskName}')
-        
-    # Merge data from questionnaires
-
-    for taskName in list_of_questionnaires:
-        
-        if taskName == 'q_IC3_demographics':
-            
-            summary_task_path = root_path + supervised_data_folders[0] + folder_structure[0]
-            raw_task_path = root_path + supervised_data_folders[0] + folder_structure[1]
-            
-            df_v1 = pd.read_csv((f'{summary_task_path}/{taskName}Healthy_questionnaire.csv'), low_memory=False)
-            df_v1_2 = pd.read_csv((f'{summary_task_path}/{taskName}_questionnaire.csv'), low_memory=False)
-            df_v1_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw.csv'), low_memory=False)
-            df_v1_raw_2 = pd.read_csv((f'{raw_task_path}/{taskName}Healthy_raw.csv'), low_memory=False)
-
-            summary_task_path = root_path + supervised_data_folders[1] + folder_structure[0]
-            raw_task_path = root_path + supervised_data_folders[1] + folder_structure[1]
- 
-            df_v2 = pd.read_csv((f'{summary_task_path}/{taskName}_questionnaire.csv'), low_memory=False)
-            df_v2_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw.csv'), low_memory=False)
-            
-            summary_task_path = root_path + remote_data_folders + folder_structure[0]
-            raw_task_path = root_path + remote_data_folders + folder_structure[1]
-
-            df_cog = pd.read_csv((f'{summary_task_path}/{taskName}Healthy_questionnaire.csv'), low_memory=False)
-            df_cog_raw = pd.read_csv((f'{raw_task_path}/{taskName}Healthy_raw.csv'), low_memory=False)
-
-            df = pd.concat([df_v1, df_v1_2, df_v2, df_cog], ignore_index=True)
-            df_raw = pd.concat([df_v1_raw, df_v1_raw_2, df_v2_raw, df_cog_raw], ignore_index=True)
-            
-        else:
-            
-            summary_task_path = root_path + supervised_data_folders[0] + folder_structure[0]
-            raw_task_path = root_path + supervised_data_folders[0] + folder_structure[1]
-            
-            df_v1 = pd.read_csv(f'{summary_task_path}/{taskName}_questionnaire.csv', low_memory=False)
-            df_v1_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw.csv'), low_memory=False)
-            
-            summary_task_path = root_path + supervised_data_folders[1] + folder_structure[0]
-            raw_task_path = root_path + supervised_data_folders[1] + folder_structure[1]
-            
-            df_v2 = pd.read_csv(f'{summary_task_path}/{taskName}_questionnaire.csv', low_memory=False)
-            df_v2_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw.csv'), low_memory=False)
-            
-            summary_task_path = root_path + remote_data_folders + folder_structure[0]
-            raw_task_path = root_path + remote_data_folders + folder_structure[1]
-            
-            df_cog = pd.read_csv(f'{summary_task_path}/{taskName}_questionnaire.csv', low_memory=False)
-            df_cog_raw = pd.read_csv((f'{raw_task_path}/{taskName}_raw.csv'), low_memory=False)
-            
-            df = pd.concat([df_v1, df_v2, df_cog], ignore_index=True)
-            df_raw = pd.concat([df_v1_raw, df_v2_raw, df_cog_raw], ignore_index=True)
-        
-        output_folder = root_path + merged_data_folder
-
-        df.to_csv(f'{output_folder}/{folder_structure[0]}/{taskName}{data_format}', index=False)
-        df_raw.to_csv(f'{output_folder}/{folder_structure[1]}/{taskName}_raw.csv', index=False)
-        #print(f'Merged {taskName}')
+    # Retain only common user IDs across all dataframes
+    common_ids = set(df_dem['user_id']) ^ set(df_pear['user_id'])
     
-    return list_of_tasks
-
-
-def combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format):
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(common_ids)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
     
-    os.chdir(root_path + output_clean_folder + folder_structure[0])
+    # Remove users who fail screening tests based on SummaryScore criteria
+    # Vectorized approach: identify user_ids that meet both failure conditions.
+    fail_orient = set(df_orient.loc[df_orient['SummaryScore'] < 3, 'user_id'])
+    fail_pear   = set(df_pear.loc[df_pear['SummaryScore'] <= 0.80, 'user_id'])
+    failed_ids  = fail_orient & fail_pear    
     
-    #Do a loop and read the data in each of the tasks
-
-    for file in list_of_tasks:
-        
-        # Read Task Data for Healthy Participants
-        temp_healthy_cog = pd.read_csv(f'{file}{clean_file_extension}{data_format}', low_memory=False)
-        
-        # Drop duplicates if any
-        temp_healthy_cog.drop_duplicates(subset='user_id', keep='last', inplace=True)
-
-        # Reset the Index
-        temp_healthy_cog.reset_index(drop=True, inplace=True)
-
-        # Merge Demographics data between patients and controls
-        task_id = temp_healthy_cog.taskID.iloc[0]       
-        temp_healthy_cog = temp_healthy_cog.loc[:,['user_id','SummaryScore']]
-        temp_healthy_cog.rename(columns={'SummaryScore':task_id}, inplace=True)
-        
-        df_demographics= pd.merge(df_demographics, temp_healthy_cog,  on="user_id", how="left")
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(failed_ids)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
     
-    df_demographics.to_csv('summary_cognition_and_demographics.csv')
+    print(f'We removed {len(failed_ids)} people who failed both Orientation and Pear Cancellation, from all tasks.')
+
+    # Remove users not neurologically healthy (using demographics responses)
+    unhealthy_mask = ((df_dem['Q12_R'] != "SKIPPED") | (df_dem['Q14_R'] != "SKIPPED") |
+                    (df_dem['Q1_R'] < 40))
+    unhealthy_mask = df_dem.loc[unhealthy_mask,'user_id']
+    neuro_removed = ((df_dem['Q12_R'] != "SKIPPED") | (df_dem['Q14_R'] != "SKIPPED")).sum()
+    age_removed = (df_dem['Q1_R'] < 40).sum()
+    
+    for df in (df_dem, df_orient, df_pear):
+        df.drop(df[df['user_id'].isin(unhealthy_mask)].index, inplace=True)
+        df.reset_index(drop=True, inplace=True)
+
+    print(f'We removed {neuro_removed} who indicated neurological disorder, '
+          f'{age_removed} who are younger than 40.')
+    
+    # Return the final cleaned user IDs from df_pear as a Series
+    cleaned_ids_supervised = df_pear['user_id']
+    
+    return cleaned_ids_supervised
+
+
+def merge_control_data_across_sites(root_path, folder_structure, supervised_data_folders,
+                                    remote_data_folders, list_of_tasks, list_of_questionnaires,
+                                    list_of_speech, data_format, merged_data_folder):
+    """
+    Merge control data across sites from clinical tests, speech, and questionnaires.
+    """
+    # Build output base folder and ensure directory structure exists
+    output_base = os.path.join(root_path, merged_data_folder.strip("/"))
+    ensure_directory(output_base)
+    
+    for folder in folder_structure:
+        ensure_directory(os.path.join(output_base, folder.strip("/")))
+    
+    # Merge clinical test data
+    merge_clinical_tests(root_path, folder_structure, supervised_data_folders,
+                                         remote_data_folders, list_of_tasks, data_format, output_base)
+    
+    # Merge speech data
+    merge_speech_data(root_path, folder_structure, supervised_data_folders, list_of_speech,  data_format, output_base)
+    
+    # Merge questionnaire data
+    merge_questionnaire_data(root_path, folder_structure, supervised_data_folders, remote_data_folders,
+                             list_of_questionnaires,  data_format, output_base)
+    
     return None
 
-        
-    
 
-def demographics_preproc(root_path, merged_data_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension):
+def load_task_data(root, data_folder, subfolder, task, data_format, raw=False, version_suffix=''):
+    """
+    Helper to load a CSV file.
+    :param root: Root directory.
+    :param data_folder: The data folder (e.g. supervised or remote).
+    :param subfolder: The subfolder name (e.g. summary or raw folder).
+    :param task: Task name.
+    :param data_format: File extension (e.g. '.csv').
+    :param raw: If True, load the raw file.
+    :param version_suffix: Optional suffix (for special cases like IDED).
+    """
     
-    os.chdir(root_path + merged_data_folder)
+    base = os.path.join(root, data_folder.strip("/"), subfolder.strip("/"), task)
+    suffix = "_raw" if raw else ""
+    filename = f"{base}{version_suffix}{suffix}{data_format}"
+
+    return pd.read_csv(filename, low_memory=False)
+
+def merge_and_save(df_list, output_file):
+    """
+    Concatenate list of dataframes and save to a CSV file.
+    :param df_list: List of dataframes to merge.
+    :param output_file: Full path of the output file.
+    """
+    merged_df = pd.concat(df_list, ignore_index=True)
+    print(len(merged_df))
+    merged_df.to_csv(output_file, index=False)
+
+def merge_clinical_tests(root, folder_structure, supervised_data_folders, remote_data_folder, tasks, data_format, output_base):
+    
+    """
+    Merge clinical test data across sources.
+    This function handles the special case for 'IC3_i4i_IDED' and temporary addition of NVtrailMaking versions.
+    """
+    
+    # Use a copy of the tasks list to add temporary tasks
+    tasks_to_merge = tasks.copy()
+    if 'IC3_NVtrailMaking' in tasks_to_merge:
+        tasks_to_merge += ['IC3_NVtrailMaking2', 'IC3_NVtrailMaking3']
+
+    for task in tasks_to_merge:
+        # Supervised source 1
+        df_v1 = load_task_data(root, supervised_data_folders[0], folder_structure[0], task, data_format, raw=False)
+        df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1], task, data_format, raw=True)
+        
+        # Supervised source 2 (with special case for IDED)
+        if task == "IC3_i4i_IDED":
+            df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0], task, data_format, raw=False, version_suffix='2')
+            df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1], task, data_format, raw=True, version_suffix='2')
+        else:
+            df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0], task, data_format, raw=False)
+            df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1], task, data_format, raw=True)
+        
+        # Remote data source
+        df_cog = load_task_data(root, remote_data_folder, folder_structure[0], task, data_format, raw=False)
+        df_cog_raw = load_task_data(root, remote_data_folder, folder_structure[1], task, data_format, raw=True)
+        
+        print(task)
+        
+        # Merge the three sources
+        summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
+        merge_and_save([df_v1, df_v2, df_cog], summary_out)
+        
+        raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
+        merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw],raw_out)
+
+        # Optionally log progress: print(f'Merged clinical test data for {task}')
+
+def merge_speech_data(root, folder_structure, supervised_data_folders, list_of_speech,  data_format, output_base):
+    """
+    Merge speech data from two supervised sources.
+    """
+    for task in list_of_speech:
+        print(task)
+        
+        df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
+        df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
+        
+        raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
+        merge_and_save([df_v1_raw, df_v2_raw], raw_out)
+        
+        
+        # Optionally log progress: print(f'Merged speech data for {task}')
+
+def merge_questionnaire_data(root, folder_structure, supervised_data_folders, remote_data_folder, list_of_questionnaires,  data_format, output_base):
+    """
+    Merge questionnaire data. Handles the special case for demographics.
+    """
+    for task in list_of_questionnaires:
+        
+        print(task)
+
+        if task == 'q_IC3_demographics':
+            
+            # Supervised source 1 (two versions for healthy)
+            df_v1 = load_task_data(root, supervised_data_folders[0], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='Healthy_questionnaire')
+            df_v1_2 = load_task_data(root, supervised_data_folders[0], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+            df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
+            df_v1_raw_2 = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True, version_suffix='Healthy')
+
+            # Supervised source 2
+            df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+            df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
+            
+            # Remote data source
+            df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='Healthy_questionnaire')
+            df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True, version_suffix='Healthy')
+
+            summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
+            merge_and_save([df_v1, df_v1_2, df_v2, df_cog], summary_out)
+            
+            raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
+            merge_and_save([df_v1_raw, df_v1_raw_2, df_v2_raw, df_cog_raw], raw_out)
+
+        else:
+            # For all other questionnaires
+            # Supervised source 1
+
+            df_v1 = load_task_data(root, supervised_data_folders[0], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+            df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
+
+            # Supervised source 2
+            df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+            df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
+            
+            # Remote data source
+            df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+            df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True)
+            
+            summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
+            merge_and_save([df_v1, df_v2, df_cog], summary_out)
+            
+            raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
+            merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw], raw_out)
+            
+        # Optionally log progress: print(f'Merged questionnaire data for {task}')
+
+
+
+def combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure,
+                                         list_of_tasks, df_demographics,
+                                         clean_file_extension, data_format):
+    """
+    Combine demographic data with cognitive task scores.
+
+    This function iterates over a list of cognitive task files, reads each file,
+    cleans the data by dropping duplicates and renaming the summary score column to the task ID,
+    and then merges the resulting summary scores into the provided demographics DataFrame.
+    Finally, it saves the combined DataFrame as a CSV file.
+
+    Parameters
+    ----------
+    root_path : str
+        The root directory path.
+    output_clean_folder : str
+        The folder name containing cleaned cognitive data.
+    folder_structure : list of str
+        List of folder structure components; the first element is used to locate the tasks.
+    list_of_tasks : list of str
+        List of task file base names (without extension or clean_file_extension).
+    df_demographics : pd.DataFrame
+        DataFrame containing the demographic data.
+    clean_file_extension : str
+        Suffix appended to task file names (e.g., '_clean').
+    data_format : str
+        File format extension (e.g., '.csv').
+
+    Returns
+    -------
+    pd.DataFrame
+        Merged DataFrame containing demographics and cognitive task scores.
+
+    Examples
+    --------
+    >>> merged_df = combine_demographics_and_cognition(
+    ...     "/data", "cleaned", ["/tasks"], ["task1", "task2"], demographics_df,
+    ...     "_clean", ".csv"
+    ... )
+    >>> merged_df.head()
+    """
+    # Build the folder path without changing the working directory
+    tasks_folder = os.path.join(root_path, output_clean_folder.strip('/'), folder_structure[0].strip('/'))
+    
+    # Loop through each cognitive task file
+    for task_file in list_of_tasks:
+        task_file_path = os.path.join(tasks_folder, f"{task_file}{clean_file_extension}{data_format}")
+        try:
+            temp_cog = pd.read_csv(task_file_path, low_memory=False)
+        except Exception as e:
+            print(f"Error reading file {task_file_path}: {e}")
+            continue
+        
+        # Drop duplicate entries for each user and reset the index
+        temp_cog = temp_cog.drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)
+        
+        # Ensure the 'taskID' column exists and use its first value as the new column name
+        if 'taskID' not in temp_cog.columns:
+            print(f"'taskID' column missing in {task_file_path}. Skipping this file.")
+            continue
+        
+        task_id = temp_cog.loc[0, 'taskID']
+        
+        # Select only the 'user_id' and 'SummaryScore' columns and rename 'SummaryScore' to the task_id
+        temp_cog = temp_cog[['user_id', 'SummaryScore']].rename(columns={'SummaryScore': task_id})
+        
+        # Merge the cognitive data with the demographics data on 'user_id'
+        df_demographics = pd.merge(df_demographics, temp_cog, on='user_id', how='left')
+    
+    # Save the merged DataFrame
+    output_file = os.path.join(tasks_folder, "summary_cognition_and_demographics_new.csv")
+    df_demographics.to_csv(output_file, index=False)
+    
+    return df_demographics
+ 
+
+def demographics_preproc(root_path, merged_data_folder, output_clean_folder, questionnaire_name,
+                         inclusion_criteria, folder_structure, data_format,
+                         clean_file_extension):
+    """
+    Preprocess and clean demographic questionnaire data.
+
+    This function loads demographic data from two CSV files (a summary file and a raw file),
+    filters the data based on the provided inclusion criteria, cleans and transforms the
+    demographic variables, and returns a one-hot encoded DataFrame of the cleaned data.
+    The processed DataFrame is also saved to a CSV file.
+
+    Parameters
+    ----------
+    root_path : str
+        Root directory path.
+    merged_data_folder : str
+        Folder name where the merged data is stored.
+    questionnaire_name : str
+        Name of the questionnaire (used in file naming).
+    inclusion_criteria : list
+        List of user IDs to be included in the analysis.
+    folder_structure : list of str
+        Two-element list with folder paths: first for the summary file, second for the raw file.
+    data_format : str
+        File extension (e.g. ".csv").
+    clean_file_extension : str
+        Suffix to be appended to the output file name (e.g. "_clean").
+
+    Returns
+    -------
+    pd.DataFrame or None
+        A one-hot encoded DataFrame containing the cleaned demographic data, or
+        None if there was an error loading the data.
+
+    Examples
+    --------
+    >>> df = demographics_preproc("/data", "merged", "survey", [1, 2, 3],
+    ...                           ["/summary", "/raw"], ".csv", "_clean")
+    >>> df.head()
+    """
+    
+    # Set working directory
+    os.chdir(os.path.join(root_path, merged_data_folder.strip('/')))
+
+    # Construct file paths (strip / if any)
+    raw_path = os.path.join(folder_structure[1].strip('/'), f"{questionnaire_name}_raw{data_format}")
+    summary_path = os.path.join(folder_structure[0].strip('/'), f"{questionnaire_name}{data_format}")
+
     try:
-        df_dem_summary = pd.read_csv(f'.{folder_structure[0]}/{questionnaire_name}{data_format}', low_memory=False)
-        df_dem_summary = df_dem_summary[df_dem_summary.user_id.isin(inclusion_criteria)]
+        df_dem = pd.read_csv(raw_path, low_memory=False)
+        df_dem = df_dem[df_dem.user_id.isin(inclusion_criteria)]
         
-        df_dem = pd.read_csv(f'.{folder_structure[1]}/{questionnaire_name}_raw{data_format}', low_memory=False)
-        df_dem = df_dem[df_dem.user_id.isin(inclusion_criteria)]    
-
-    except:
-        print(f'Error in loading {questionnaire_name}. File might not exist.')
+        df_dem_summary = pd.read_csv(summary_path, low_memory=False)
+        df_dem_summary = df_dem_summary[df_dem_summary.user_id.isin(inclusion_criteria)]
+    except Exception as e:
+        print(f"Error loading {questionnaire_name}: {e}. File might not exist.")
         return None
-    
-    df_dem.drop(['Unnamed: 0'], axis=1, inplace=True)
-    df_dem =df_dem.drop_duplicates(subset=['user_id','question'], keep='last').reset_index(drop=True)
-    df_dem_summary =df_dem_summary.drop_duplicates(subset='user_id',keep='last').reset_index(drop=True)
-    
-    # Extract demographics of interest
-    
-    age = df_dem.groupby(['question']).get_group('<center>Howoldareyou?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    gender = df_dem.groupby(['question']).get_group('<center>Whatisyourbiologicalsex?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    education = df_dem.groupby(['question']).get_group('<center>Whatisyourhighestlevelofeducation?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    device = df_dem.groupby(['question']).get_group('<center>Whatdeviceareyouusingatthemoment?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    english = df_dem.groupby(['question']).get_group('<center>HowwouldyourateyourproficiencyinEnglish?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    depression = df_dem.groupby(['question']).get_group('<center>Areyoucurrentlytakinganymedicationfordepression?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    anxiety = df_dem.groupby(['question']).get_group('<center>Areyoucurrentlytakinganymedicationforanxiety?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    dyslexia = df_dem.groupby(['question']).get_group('<center>DoyouhaveDyslexia,oranyotherproblemswithreadingandwriting?</center>').loc[:,['response','user_id']].reset_index(drop=True)
-    risks = df_dem.groupby(['question']).get_group('<center>Haveyoueverbeentoldyouhavethefollowing?Tickallthatapplies</center>').loc[:,['response','user_id']].reset_index(drop=True)
 
-    # Clean each variable
-    
-    age.response = pd.to_numeric(age.response)
-    age.loc[age.response < 40,'response'] = np.nan
-    
-    gender.response = gender.response.replace(['53','55','65','78','71','72'],np.nan)
-    gender.replace(['Male','Female'],[0,1], inplace=True)
+    # Drop unwanted columns and duplicates
+    if 'Unnamed: 0' in df_dem.columns:
+        df_dem.drop(['Unnamed: 0'], axis=1, inplace=True)
+    df_dem = df_dem.drop_duplicates(subset=['user_id', 'question'],keep='last').reset_index(drop=True)
+    df_dem_summary = df_dem_summary.drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)
 
-    education.response = education.response.replace('1',np.nan)
-    education.response = education.response.replace('Secondary/HighSchoolDiploma','Secondary/HighSchool-A-levels')
-    education.response = education.response.replace('Primary/ElementarySchool','SecondarySchool-GCSE')
-    education.replace(['SecondarySchool-GCSE','Secondary/HighSchool-A-levels','ProfessionalDegree','Bachelor\'sDegree','Master\'sDegree','PhD'],[0,1,1,2,3,3], inplace=True)
-                
-    device = device.merge(df_dem_summary.loc[:,['user_id','os']], on='user_id', how='outer')
-    device.response = device.response.fillna(device.os)
-    device.drop('os',axis=1,inplace=True)
-    
-    english.response.replace({'3': 1, '4': 1, 'No': np.nan, '2':1,'1':0}, inplace=True)
-    depression.response.replace({'No':0, 'Yes':1, 'SKIPPED':0}, inplace=True)   
-    anxiety.response.replace({'No':0, 'Yes':1, 'SKIPPED':0}, inplace=True)
-    dyslexia.response.replace({'Yes':1,'No':0,'Tablet':0,'Touchscreen':0,np.nan:0}, inplace=True)
-    
-    risks.drop_duplicates(keep='last', inplace=True)
-    risks.replace(np.nan, ' ', inplace=True)
-    risks.response = risks.response.str.lower()
-    risks['diabetes'] = risks.response.apply(lambda x: 'diabetes' in x).replace([True,False], [1,0])
-    risks['highbloodpressure'] = risks.response.apply(lambda x: 'highbloodpressure' in x).replace([True,False], [1,0])
-    risks['highcholesterol'] = risks.response.apply(lambda x: ('highcholesterol' in x) or ('highcholesterole' in x)).replace([True,False], [1,0])
-    risks['heartdisease'] = risks.response.apply(lambda x: 'heartdisease' in x).replace([True,False], [1,0])
-    risks['kidneydisease'] = risks.response.apply(lambda x: 'kidneydisease' in x).replace([True,False], [1,0])
-    risks['alcoholdependency'] = risks.response.apply(lambda x: 'alcoholdependency' in x).replace([True,False], [1,0])
-    risks['over-weight'] = risks.response.apply(lambda x: ('over-weight' in x) or ('overweight' in x)).replace([True,False], [1,0])
-    risks['long-termsmoker'] = risks.response.apply(lambda x: ('long-termsmoker' in x) or ('longtermsmoker' in x)).replace([True,False], [1,0])
-    risks['ex-smoker'] = risks.response.apply(lambda x: ('ex-smoker' in x) or ('exsmoker' in x)).replace([True,False], [1,0])
-    risks.loc[(risks['long-termsmoker'] & risks['ex-smoker']).astype(bool),'ex-smoker'] = 0
-    risks.response = risks.iloc[:,2:].sum(axis=1)
-    
-    age.drop_duplicates(subset="user_id",keep='last',inplace=True)
-    gender.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    education.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    device.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    english.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    depression.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    anxiety.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    dyslexia.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    risks.drop_duplicates(subset="user_id", keep='last',inplace=True)
-    
-    age.rename(columns={'response':'age'}, inplace=True)
-    gender.rename(columns={'response':'gender'}, inplace=True)
-    education.rename(columns={'response':'education'}, inplace=True)
-    device.rename(columns={'response':'device'}, inplace=True)
-    english.rename(columns={'response':'english'}, inplace=True)
-    depression.rename(columns={'response':'depression'}, inplace=True)
-    anxiety.rename(columns={'response':'anxiety'}, inplace=True)
-    dyslexia.rename(columns={'response':'dyslexia'}, inplace=True)
-    risks.rename(columns={'response':'risks'}, inplace=True)
-    
-    age.dropna(inplace=True)
-    gender.dropna(inplace=True)
-    education.dropna(inplace=True)
-    device.dropna(inplace=True)
-    english.dropna(inplace=True)
-    depression.dropna(inplace=True)
-    anxiety.dropna(inplace=True)
-    dyslexia.dropna(inplace=True)
-    risks.dropna(inplace=True)
-              
-    # Merge and format
-    
-    healthy_demographics = age.merge(gender,on='user_id').merge(education,on='user_id').merge(device,on='user_id').merge(english,on='user_id').merge(depression,on='user_id').merge(anxiety,on='user_id').merge(risks,on='user_id').merge(dyslexia,on='user_id')
-    healthy_demographics.education = healthy_demographics.education.astype(int)
-    
-    one_hot_encoded_data = pd.get_dummies(healthy_demographics, columns = ['device', 'education'])
-    one_hot_encoded_data.rename(columns={'education_1':'education_Alevels', 'education_2':'education_bachelors','education_3':'education_postBachelors'}, inplace=True)
-    one_hot_encoded_data.rename(columns={'device_1':'device_tablet', 'device_0':'device_phone'}, inplace=True)
-    one_hot_encoded_data.rename(columns={'english':'english_secondLanguage'}, inplace=True)
-    one_hot_encoded_data.replace({True:1, False:0}, inplace=True)
-    one_hot_encoded_data.loc[:,'gender':'education_postBachelors'] = one_hot_encoded_data.loc[:,'gender':'education_postBachelors'] -0.5
+    def extract_response(df, question_text):
+        """Extract the response and user_id for a given question."""
+        return df.loc[df['question'] == question_text, ['user_id', 'response']].copy().reset_index(drop=True)
 
-    # Save 
+    # Extract demographics of interest using the question text
+    age_df = extract_response(df_dem, '<center>Howoldareyou?</center>')
+    gender_df = extract_response(df_dem, '<center>Whatisyourbiologicalsex?</center>')
+    education_df = extract_response(df_dem, '<center>Whatisyourhighestlevelofeducation?</center>')
+    device_df = extract_response(df_dem, '<center>Whatdeviceareyouusingatthemoment?</center>')
+    english_df = extract_response(df_dem, '<center>HowwouldyourateyourproficiencyinEnglish?</center>')
+    depression_df = extract_response(df_dem, '<center>Areyoucurrentlytakinganymedicationfordepression?</center>')
+    anxiety_df = extract_response(df_dem, '<center>Areyoucurrentlytakinganymedicationforanxiety?</center>')
+    dyslexia_df = extract_response(df_dem, '<center>DoyouhaveDyslexia,oranyotherproblemswithreadingandwriting?</center>')
+    risks_df = extract_response(df_dem, '<center>Haveyoueverbeentoldyouhavethefollowing?Tickallthatapplies</center>')
+
+    # --- Cleaning Functions for Each Variable ---
+
+    def clean_age(df):
+        df['response'] = pd.to_numeric(df['response'], errors='coerce')
+        df.loc[df['response'] < 40, 'response'] = np.nan
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'age'}, inplace=True)
+        return df
+
+    def clean_gender(df):
+        df['response'] = df['response'].replace(['53', '55', '65', '78', '71', '72'], np.nan)
+        df.replace({'Male': 0, 'Female': 1}, inplace=True)
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'gender'}, inplace=True)
+        return df
+
+    def clean_education(df):
+        df['response'] = df['response'].replace('1', np.nan)
+        df['response'] = df['response'].replace({
+            'Secondary/HighSchoolDiploma': 'Secondary/HighSchool-A-levels',
+            'Primary/ElementarySchool': 'SecondarySchool-GCSE'
+        })
+        mapping = {
+            'SecondarySchool-GCSE': 0,
+            'Secondary/HighSchool-A-levels': 1,
+            'ProfessionalDegree': 1,
+            "Bachelor'sDegree": 2,
+            "Master'sDegree": 3,
+            'PhD': 3
+        }
+        df.replace({'response': mapping}, inplace=True)
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'education'}, inplace=True)
+        return df
+
+    def clean_device(df, summary_df):
+        df = df.merge(summary_df[['user_id', 'os']], on='user_id', how='outer')
+        df['response'] = df['response'].fillna(df['os'])
+        df['response'] = df['response'].replace({'Mac OS X': 'Tablet', 'Android': 'Phone', 'Windows': 'Laptop/Computer', 'iOS': 'Phone', 'Chrome OS': 'Laptop/Computer'})
+        df.drop(columns='os', inplace=True)
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'device'}, inplace=True)
+        return df
+
+    def clean_english(df):
+        df['response'] = df['response'].replace({'3': 1, '4': 1, 'No': np.nan, '2': 1, '1': 0})
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'english'}, inplace=True)
+        return df
+
+    def clean_binary_response(df, col_name, mapping):
+        df['response'] = df['response'].replace(mapping)
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': col_name}, inplace=True)
+        return df
+
+    def clean_risks(df):
+        df.drop_duplicates(keep='last', inplace=True)
+        df.replace(np.nan, ' ', inplace=True)
+        df['response'] = df['response'].str.lower()
+        risk_conditions = {
+            'diabetes': ['diabetes'],
+            'highbloodpressure': ['highbloodpressure'],
+            'highcholesterol': ['highcholesterol', 'highcholesterole'],
+            'heartdisease': ['heartdisease'],
+            'kidneydisease': ['kidneydisease'],
+            'alcoholdependency': ['alcoholdependency'],
+            'over-weight': ['over-weight', 'overweight'],
+            'long-termsmoker': ['long-termsmoker', 'longtermsmoker'],
+            'ex-smoker': ['ex-smoker', 'exsmoker']
+        }
+        for key, terms in risk_conditions.items():
+            df[key] = df['response'].apply(lambda x: any(term in x for term in terms)).astype(int)
+        df.loc[(df['long-termsmoker'] & df['ex-smoker']).astype(bool), 'ex-smoker'] = 0
+        
+        # Sum risk flags to obtain a risk score
+        df['response'] = df[list(risk_conditions.keys())].sum(axis=1)
+        #df.drop(columns=list(risk_conditions.keys()), inplace=True)
+        df.drop_duplicates(subset='user_id', keep='last', inplace=True)
+        df.dropna(inplace=True)
+        df.rename(columns={'response': 'risks'}, inplace=True)
+        return df
+
+    # --- Clean each extracted DataFrame ---
+    age_df = clean_age(age_df)
+    gender_df = clean_gender(gender_df)
+    education_df = clean_education(education_df)
+    device_df = clean_device(device_df, df_dem_summary)
+    english_df = clean_english(english_df)
+    depression_df = clean_binary_response(depression_df, 'depression',
+                                          {'No': 0, 'Yes': 1, 'SKIPPED': 0})
+    anxiety_df = clean_binary_response(anxiety_df, 'anxiety',
+                                       {'No': 0, 'Yes': 1, 'SKIPPED': 0})
+    dyslexia_df = clean_binary_response(dyslexia_df, 'dyslexia',
+                                     {'Yes': 1, 'No': 0, 'Tablet': 0, 'Touchscreen': 0, np.nan: 0})
+    risks_df = clean_risks(risks_df)
+
+    # Merge all cleaned data on 'user_id'
+    dfs = [age_df, gender_df, education_df, device_df, english_df,
+           depression_df, anxiety_df, risks_df, dyslexia_df]
+    healthy_demographics = dfs[0]
     
-    one_hot_encoded_data.to_csv(f'.{folder_structure[0]}/{questionnaire_name}{clean_file_extension}{data_format}', index=False)
-    
+    for df in dfs[1:]:
+        healthy_demographics = healthy_demographics.merge(df, how='left', on='user_id')
+        
+    healthy_demographics['dyslexia'] = healthy_demographics['dyslexia'].replace(np.nan,0)
+    healthy_demographics = healthy_demographics.dropna()
+
+    # Ensure education is of integer type
+    healthy_demographics['education'] = healthy_demographics['education'].astype(int)
+
+    # One-hot encode categorical variables
+    one_hot_encoded_data = pd.get_dummies(healthy_demographics, columns=['device', 'education'])
+    one_hot_encoded_data.rename(columns={
+        'education_1': 'education_Alevels',
+        'education_2': 'education_bachelors',
+        'education_3': 'education_postBachelors',
+        'device_1': 'device_tablet',
+        'device_0': 'device_phone',
+        'english': 'english_secondLanguage'
+    }, inplace=True)
+    one_hot_encoded_data.replace({True: 1, False: 0}, inplace=True)
+
+    # Adjust numerical columns by subtracting 0.5 (from gender to education_postBachelors)
+    cols_to_adjust = one_hot_encoded_data.loc[:, 'gender':'education_postBachelors'].columns
+    one_hot_encoded_data[cols_to_adjust] = one_hot_encoded_data[cols_to_adjust] - 0.5
+
+    # Save the final DataFrame
+    output_path = os.path.join(root_path, output_clean_folder.strip('/'), folder_structure[0].strip('/'),
+                               f"{questionnaire_name}{clean_file_extension}{data_format}")
+    one_hot_encoded_data.to_csv(output_path, index=False)
+
     return one_hot_encoded_data
 
   

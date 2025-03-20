@@ -666,6 +666,25 @@ def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_s
     return None
 
 def orientation_preproc(df,df_raw):
+    
+    """
+    Pre-process Orientation task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
 
     df_raw.loc[df_raw.RT<400,'RT'] = np.nan
     df_raw.loc[df_raw.RT>10000,'RT'] = np.nan
@@ -723,6 +742,25 @@ def orientation_preproc(df,df_raw):
     return df,df_raw
 
 def pear_cancellation_preproc(df,df_raw):
+    
+    """
+    Pre-process Pear Cancellation task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
@@ -784,6 +822,25 @@ def pear_cancellation_preproc(df,df_raw):
 
 def digitspan_preproc(df,df_raw):
     
+    """
+    Pre-process Digit Span task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
 
@@ -838,6 +895,25 @@ def digitspan_preproc(df,df_raw):
 
 
 def spatialspan_preproc(df,df_raw):
+    
+    """
+    Pre-process Spatial Span task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
@@ -894,6 +970,25 @@ def spatialspan_preproc(df,df_raw):
 
 
 def pal_preproc(df,df_raw):
+    
+    """
+    Pre-process Paired Associated Learning task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
@@ -953,6 +1048,25 @@ def pal_preproc(df,df_raw):
 
 def semantics_preproc(df,df_raw):
     
+    """
+    Pre-process Semantic Judgement task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<500,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
 
@@ -997,6 +1111,25 @@ def semantics_preproc(df,df_raw):
 
 def srt_preproc(df,df_raw):
     
+    """
+    Pre-process SRT task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<180,'RT'] = np.nan
     df_raw.loc[df_raw.RT>1000,'RT'] = np.nan
 
@@ -1039,6 +1172,25 @@ def srt_preproc(df,df_raw):
 
 
 def crt_preproc(df,df_raw):
+    
+    """
+    Pre-process CRT task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>1000,'RT'] = np.nan
@@ -1098,6 +1250,25 @@ def crt_preproc(df,df_raw):
 
 
 def motor_control_preproc(df,df_raw):
+    
+    """
+    Pre-process Motor Control task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>10000,'RT'] = np.nan
@@ -1171,6 +1342,25 @@ def motor_control_preproc(df,df_raw):
 
 def taskrecall_preproc(df,df_raw):
     
+    """
+    Pre-process Task Recall task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
 
@@ -1220,6 +1410,25 @@ def taskrecall_preproc(df,df_raw):
     return df,df_raw  
 
 def auditory_attention_preproc(df,df_raw):
+    
+    """
+    Pre-process Auditory Attention task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<300,'RT'] = np.nan
     df_raw.loc[df_raw.RT>3000,'RT'] = np.nan
@@ -1284,6 +1493,25 @@ def auditory_attention_preproc(df,df_raw):
 
 def calculation_preproc(df,df_raw):
     
+    """
+    Pre-process Calculation task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<600,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
 
@@ -1338,6 +1566,25 @@ def calculation_preproc(df,df_raw):
 
 
 def blocks_preproc(df,df_raw):
+    
+    """
+    Pre-process Blocks task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<250,'RT'] = np.nan
     df_raw.loc[df_raw.RT>20000,'RT'] = np.nan
@@ -1436,6 +1683,25 @@ def blocks_preproc(df,df_raw):
     
 def gesture_preproc(df,df_raw):
     
+    """
+    Pre-process Gesture Recognition task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<1500,'RT'] = np.nan
     df_raw.loc[df_raw.RT>25000,'RT'] = np.nan
 
@@ -1492,6 +1758,25 @@ def gesture_preproc(df,df_raw):
 
     
 def rule_learning_preproc(df,df_raw):
+    
+    """
+    Pre-process Rule Learning task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
@@ -1587,6 +1872,25 @@ def rule_learning_preproc(df,df_raw):
   
 def oddoneout_preproc(df,df_raw):
     
+    """
+    Pre-process Odd One Out task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>20000,'RT'] = np.nan
 
@@ -1670,6 +1974,25 @@ def oddoneout_preproc(df,df_raw):
     
 def comprehension_preproc(df,df_raw):
     
+    """
+    Pre-process Language Comprehension task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
 
@@ -1741,6 +2064,25 @@ def comprehension_preproc(df,df_raw):
 
 def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
     
+    """
+    Pre-process Trail-making task data and compute performance metrics.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Summary DataFrame containing participant information. 
+    df_raw : pandas.DataFrame
+        Raw DataFrame for the task.
+
+    Returns
+    -------
+    tuple of pandas.DataFrame
+        A tuple containing:
+        - df : The updated summary DataFrame with computed performance metrics
+        - df_raw : The filtered raw DataFrame that includes only those users present in the
+          updated summary DataFrame.
+    """
+    
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
     
@@ -1753,8 +2095,6 @@ def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
 
     scores = [None] * len(df.user_id)
     errors = [None] * len(df.user_id)
-    errorsPractice = [None] * len(df.user_id)
-    maxConsecIncorrectPractice = [None] * len(df.user_id)
     sumSkippedTrials = [None] * len(df.user_id)
     meanRTs =[None] * len(df.user_id)
     medianRTs =[None] * len(df.user_id)
@@ -1803,8 +2143,6 @@ def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
 
     scores = [None] * len(df2.user_id)
     errors = [None] * len(df2.user_id)
-    errorsPractice = [None] * len(df2.user_id)
-    maxConsecIncorrectPractice = [None] * len(df2.user_id)
     sumSkippedTrials = [None] * len(df2.user_id)
     meanRTs =[None] * len(df2.user_id)
     medianRTs =[None] * len(df2.user_id)
@@ -1849,7 +2187,6 @@ def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
     df2.reset_index(drop=True,inplace=True)
     df_raw2 = df_raw2[df_raw2.user_id.isin(df2.user_id)]
     df_raw2.reset_index(drop=True,inplace=True)
-
 
     scores = [None] * len(df3.user_id)
     errors = [None] * len(df3.user_id)

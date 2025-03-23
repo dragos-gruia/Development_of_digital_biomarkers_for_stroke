@@ -1,6 +1,33 @@
 
-# Updated on 5th of April 2024
-# @author: Dragos Gruia
+# ============================================================================ #
+#  Bayesian Learning Effects Analysis Script Documentation             
+#                                                                      
+#  Last updated on: 5th of April 2024                                         
+#  Author: Dragos Gruia                                                  
+#                                                                      
+#  Description:                                                           
+#    This script performs hierarchical Bayesian regression analyses on cognitive    
+#    data collected across 4 timepoints. For each task, the script cleans data,
+#    computes descriptive statistics for each session, and fits Bayesian regression models     
+#    using Stan via cmdstanr. The output includes standardized beta estimates     
+#    for the difference in time effects between sessions, along with p-values,      
+#    95% credible intervals, and ROPE probabilities. 
+#                                                                      
+#  Inputs:                                                        
+#    - IC3_summaryScores_MT_forBayes.csv                               
+#         Primary dataset containing summary scores for cognitive        
+#         measures across different sessions.                          
+#    - data_summaryScore_speech_MT.csv                                   
+#         Secondary dataset for speech analysis                           
+#                                                                      
+#  Output:                                                       
+#    - df_results:                                                     
+#         A data frame summarizing the Bayesian regression analysis for  
+#         each task. It contains the number of participant IDs,
+#         mean scores per session, the standardized beta estimates for the time difference
+#         (last minus first timepoint), p-values, 95% credible intervals, and ROPE     
+# ============================================================================ #
+
 
 library(here)
 library(dplyr)
@@ -35,9 +62,7 @@ df_clean = df
 options(mc.cores = 8) 
 
 
-################################# 
-################################# ANALYSE DATA FOR ORIENTATION
-################################# 
+################################# ANALYSE DATA FOR ORIENTATION -----------------
 
 df$summary_score = df$orientation 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -127,9 +152,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR TASK RECALL
-################################# 
+################################# ANALYSE DATA FOR TASK RECALL -----------------
 
 df$summary_score = df$taskRecall
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -222,9 +245,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR PAL
-################################# 
+#################################  ANALYSE DATA FOR PAL ------------------------
 
 to_remove <- (df$ID != 30020) #Get rid of those who failed practice trials
 df <- df[to_remove,]
@@ -314,9 +335,7 @@ df = df_clean
 
 
 
-################################# 
-#################################  ANALYSE DATA FOR DIGITS SPAN 
-################################# 
+#################################  ANALYSE DATA FOR DIGITS SPAN ----------------
 
 
 df$summary_score = df$digitSpan
@@ -410,9 +429,7 @@ print(df_results)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR SPATIAL SPAN 
-################################# 
+#################################  ANALYSE DATA FOR SPATIAL SPAN ---------------
 
 
 df$summary_score = df$spatialSpan 
@@ -499,9 +516,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR COMPREHENSION
-################################# 
+################################# ANALYSE DATA FOR COMPREHENSION ---------------
 
 
 df$summary_score = df$comprehension 
@@ -593,9 +608,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR SEMANTIC JUDGEMENT
-################################# 
+################################# ANALYSE DATA FOR SEMANTIC JUDGEMENT ----------
 
 df$summary_score = df$semantic 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -686,18 +699,14 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR SPEECH
-################################# 
+################################# ANALYSE DATA FOR SPEECH ----------------------
 
 
 df = read.csv(speech_data)
 df_clean = df
 options(mc.cores = 8) 
 
-################################# 
-#################################  ANALYSE DATA FOR NAMING
-################################# 
+#################################  ANALYSE DATA FOR NAMING ---------------------
 
 
 df$summary_score = df$naming 
@@ -791,9 +800,7 @@ print(df_results)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR READING
-################################# 
+#################################  ANALYSE DATA FOR READING --------------------
 
 
 df$summary_score = df$reading
@@ -887,9 +894,7 @@ print(df_results)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR REPETITION
-################################# 
+#################################  ANALYSE DATA FOR REPETITION -----------------
 
 
 df$summary_score = df$repetition 
@@ -984,19 +989,15 @@ print(df_results)
 df = df_clean
 
 
-#########
-
 # SWITCH TO REMAINING COG TASKS
 
-#########
 
 # Load data
 df = read.csv(cog_data)
 df_clean = df
 
-################################# 
-#################################  ANALYSE DATA FOR BLOCKS
-################################# 
+
+#################################  ANALYSE DATA FOR BLOCKS ---------------------
 
 to_remove <- (df$ID != 30065 & df$ID != 30066 & df$ID != 30077 & df$ID != 30078 & df$ID != 30085) #Get rid of those who failed practice trials
 df <- df[to_remove,]
@@ -1085,9 +1086,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR TRAIL
-################################# 
+################################# ANALYSE DATA FOR TRAIL -----------------------
 
 df$summary_score = df$trailAll 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1178,9 +1177,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR ODD ONE OUT
-################################# 
+#################################  ANALYSE DATA FOR ODD ONE OUT ----------------
 
 
 df$summary_score = df$oddOneOut
@@ -1282,9 +1279,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR IDED
-################################# 
+################################# ANALYSE DATA FOR IDED ------------------------
 
 to_remove <- (df$ID != 30092) #Get rid of those who failed practice trials
 df <- df[to_remove,]
@@ -1378,9 +1373,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR PEAR
-################################# 
+################################# ANALYSE DATA FOR PEAR ------------------------
 
 to_remove <- (df$ID != 30085 & df$ID != 30078) #Get rid of those who failed practice trials
 df <- df[to_remove,]
@@ -1477,9 +1470,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR SRT
-################################# 
+#################################  ANALYSE DATA FOR SRT ------------------------
 
 df$summary_score = df$srt 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1564,9 +1555,7 @@ print(df_results)
 
 df = df_clean
 
-################################# 
-################################# ANALYSE DATA FOR AUDITORY ATTENTION
-################################# 
+################################# ANALYSE DATA FOR AUDITORY ATTENTION ----------
 
 df$summary_score = df$auditoryAttention 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1657,9 +1646,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR CRT
-################################# 
+#################################  ANALYSE DATA FOR CRT ------------------------
 
 df$summary_score = df$crt
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1751,9 +1738,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR MOTOR CONTROL
-################################# 
+################################# ANALYSE DATA FOR MOTOR CONTROL ---------------
 
 df$summary_score = df$motorControl 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1844,9 +1829,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR CALCULATION
-################################# 
+################################# ANALYSE DATA FOR CALCULATION -----------------
 
 
 df$summary_score = df$calculation
@@ -1938,9 +1921,7 @@ print(df_results)
 df = df_clean
 
 
-################################# 
-################################# ANALYSE DATA FOR GESTURE
-################################# 
+################################# ANALYSE DATA FOR GESTURE ---------------------
 
 df$summary_score = df$gesture 
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -2031,9 +2012,7 @@ print(df_results)
 df = df_clean
 
 
-###################
-# SAVE RESULTS
-###################
+################################ SAVE RESULTS ----------------------------------
 
 
 df_temp_all <- df_results

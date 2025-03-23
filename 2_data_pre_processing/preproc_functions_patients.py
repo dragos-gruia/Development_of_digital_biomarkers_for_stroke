@@ -191,7 +191,7 @@ def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_o
     print('Preprocessing complete.')
     
     # Save final combined DataFrame as an Excel file.
-    output_excel = os.path.join(root_path, "summary_cognition_and_demographics.xlsx")
+    output_excel = os.path.join(root_path, output_clean_folder.strip('/'), folder_structure[0].strip('/'), "summary_cognition_and_demographics.xlsx")
     df_combined.to_excel(output_excel, index=False)
     
     return df_combined

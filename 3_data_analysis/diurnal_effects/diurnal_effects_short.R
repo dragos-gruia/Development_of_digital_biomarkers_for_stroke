@@ -1,4 +1,35 @@
 
+# ============================================================================ #
+# Script: Bayesian Diurnal Analysis
+#
+#  Last updated on: 4th of May 2024                                         
+#  Author: Dragos Gruia   
+#
+# Description:
+#    This script performs Bayesian regression analyses on cognitive    
+#    performance data collected at different times of day. It analyzes 
+#    three tasks: Orientation, Task Recall, and PAL. The script         
+#    pre-processes data, fits a binomial mixed-effects model using Stan,  
+#    extracts posterior summaries, and compiles the results.           
+#                                                            
+#
+# Inputs:
+#    - data_for_bayesian_analysis.csv                                  
+#         Primary dataset containing cognitive performance measures    
+#         and associated variables (Age, session, startTime, etc.).     
+#    - data_summaryScore_speech_validation.csv                           
+#         Secondary dataset for speech validation
+#
+# Outputs:
+#    - df_results:                                                     
+#         A data frame compiling summary statistics from the Bayesian  
+#         regression analyses for each task. It includes the number    
+#         of IDs analyzed, ROPE probabilities, and 95% credible          
+#         intervals for various effects (session and interaction terms). 
+#
+# ============================================================================ #
+
+
 library(here)
 library(dplyr)
 library(tidyr)

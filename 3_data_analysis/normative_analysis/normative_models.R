@@ -1,6 +1,32 @@
 
-# Updated on 5th of April 2024
-# @author: Dragos Gruia
+# ============================================================================ #
+#  Normative Data Bayesian Analysis Script           
+#                                                                      
+#  Last updated on: 5th of April 2024                                         
+#  Author: Dragos Gruia                                                  
+#                                                                      
+#  Description:                                                           
+#    This script performs Bayesian regression analyses on a normative  
+#    cognitive dataset to assess the effect that clinical and demographic
+#    variables have on cognitive outcomes. For each task, the script
+#    pre-processes the data, compares a frequentist model with a Bayesian model,     
+#    and produces various diagnostic outputs (e.g., summaries, credible intervals,
+#    MCMC plots, and autocorrelation plots). Additionally, the fitted    
+#    Bayesian model objects are saved for further analyses.
+#                                                                      
+#  Data Inputs:                                                        
+#    - ic3_healthy_cleaned_cog_and_demographics.csv                      
+#         Primary dataset containing cognitive scores and demographic    
+#         information.                                                 
+#                                                                      
+#  Data Outputs:                                                       
+#    - Saved Stan model fit objects which are later used to create patient-specific predictive scores 
+#      These will be taken as input for the fit_bayesian_models.R script
+#    - Console outputs including frequentist model summaries,          
+#      Bayesian diagnostic summaries, MCMC interval plots, histograms,   
+#      trace plots, and autocorrelation plots.                         
+#                       
+# ============================================================================ #
 
 library(here)
 library(dplyr)
@@ -29,9 +55,9 @@ df %<>%
 df_clean = df
 options(mc.cores = 8)
 
-################################# 
-#################################  ANALYSE DATA FOR ORIENTATION
-################################# 
+
+#################################  ANALYSE DATA FOR ORIENTATION ----------------
+
 
 df$summary_score = df$orientation
 df = df[is.na(df$summary_score) == FALSE,]
@@ -131,33 +157,10 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Orientation'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR Task Recall
-################################# 
+#################################  ANALYSE DATA FOR Task Recall ----------------
 
 df$summary_score = df$taskRecall 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -250,33 +253,12 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Task Recall'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR PAL
-################################# 
+
+#################################  ANALYSE DATA FOR PAL ------------------------
+
 
 df$summary_score = df$pal
 df = df[is.na(df$summary_score) == FALSE,]
@@ -364,32 +346,12 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('PAL'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR DIGITS SPAN 
-################################# 
+
+#################################  ANALYSE DATA FOR DIGITS SPAN ----------------
+
 
 df$summary_score = df$digitSpan 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -473,32 +435,12 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-df_results <- data.frame(Task = c('Digits Span'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR SPATIAL SPAN
-################################# 
+#################################  ANALYSE DATA FOR SPATIAL SPAN ---------------
+
 
 df$summary_score = df$spatialSpan
 df = df[is.na(df$summary_score) == FALSE,]
@@ -583,32 +525,10 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-df_results <- data.frame(Task = c('Spatial Span'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR COMPREHENSION
-################################# 
+#################################  ANALYSE DATA FOR COMPREHENSION --------------
 
 df$summary_score = df$comprehension 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -701,33 +621,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Comprehension'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR SEMANTICS
-################################# 
+#################################  ANALYSE DATA FOR SEMANTICS ------------------
+
 
 df$summary_score = df$semantics
 df = df[is.na(df$summary_score) == FALSE,]
@@ -817,36 +715,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Semantics'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################################################################
 
-#### SPEECH DATA 
-
-################################################################################
-
+################################ SPEECH DATA  ----------------------------------
 
 df = read.csv('data_summaryScore_speech_normative.csv')
 df %<>% 
@@ -856,9 +729,8 @@ df_clean = df
 options(mc.cores = 8)
 
 
-################################# 
-#################################  ANALYSE DATA FOR NAMING TASK
-################################# 
+#################################  ANALYSE DATA FOR NAMING TASK ----------------
+
 
 df$summary_score = df$naming 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -940,9 +812,7 @@ save(stan_obj_mixed, file = stan_save)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR READING TASK
-################################# 
+#################################  ANALYSE DATA FOR READING TASK ---------------
 
 df$summary_score = df$reading 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1022,9 +892,7 @@ save(stan_obj_mixed, file = stan_save)
 
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR REPETITION TASK
-################################# 
+#################################  ANALYSE DATA FOR REPETITION TASK ------------
 
 df$summary_score = df$repetition
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1107,9 +975,8 @@ save(stan_obj_mixed, file = stan_save)
 
 
 
-################################# 
-#################################  SWITCH BACK TO NON-SPEECH TASKS
-################################# 
+##############################  SWITCH BACK TO NON-SPEECH TASKS ----------------
+
 
 df = read.csv('ic3_healthy_cleaned_cog_and_demographics.csv')
 
@@ -1121,9 +988,8 @@ df %<>%
 df_clean = df
 
 
-################################# 
-#################################  ANALYSE DATA FOR BLOCKS
-################################# 
+#################################  ANALYSE DATA FOR BLOCKS ---------------------
+
 
 df$summary_score = df$blocks 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1209,32 +1075,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Blocks'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
-################################# 
-#################################  ANALYSE DATA FOR TRAIL
-################################# 
+
+#################################  ANALYSE DATA FOR TRAIL ----------------------
+
 
 df$summary_score = df$trailAll
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1327,33 +1172,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Trail'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR ODD ONE OUT
-################################# 
+#################################  ANALYSE DATA FOR ODD ONE OUT ----------------
+
 
 df$summary_score = df$oddOneOut 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1442,33 +1265,10 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Odd One Out'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR IDED
-################################# 
+#################################  ANALYSE DATA FOR IDED -----------------------
 
 df$summary_score = df$ided 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1561,38 +1361,13 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('IDED'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR PEAR
-################################# 
+#################################  ANALYSE DATA FOR PEAR -----------------------
 
 df$summary_score = df$pear
 df = df[is.na(df$summary_score) == FALSE,]
-
-
 
 df %<>% 
   mutate(
@@ -1682,33 +1457,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Pear Cancellation'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR SIMPLE REACTION TIME
-################################# 
+########################### ANALYSE DATA FOR SIMPLE REACTION TASK --------------
 
 df$summary_score = df$srt
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1796,33 +1549,10 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('SRT'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR AUDITORY ATTENTION
-################################# 
+#################################  ANALYSE DATA FOR AUDITORY ATTENTION ---------
 
 df$summary_score = df$auditoryAttention 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -1914,34 +1644,11 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Auditory Attention'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
+###########################  ANALYSE DATA FOR CHOICE REACTION TIME -------------
 
-################################# 
-#################################  ANALYSE DATA FOR CHOICE REACTION TIME
-################################# 
 
 df$summary_score = df$crt
 df = df[is.na(df$summary_score) == FALSE,]
@@ -2030,33 +1737,10 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('CRT'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
-
 df = df_clean
 
 
-################################# 
-#################################  ANALYSE DATA FOR MOTOR CONTROL
-################################# 
+#################################  ANALYSE DATA FOR MOTOR CONTROL --------------
 
 df$summary_score = df$motorControl
 df = df[is.na(df$summary_score) == FALSE,]
@@ -2148,34 +1832,14 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Trail'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 
 
 
-################################# 
-#################################  ANALYSE DATA FOR CALCULATION
-################################# 
+#################################  ANALYSE DATA FOR CALCULATION ----------------
+
+
 
 df$summary_score = df$calculation 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -2271,34 +1935,14 @@ p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'inter
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
 
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Calculation'), 
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 
 
 
-################################# 
-#################################  ANALYSE DATA FOR GESTURE
-################################# 
+#################################  ANALYSE DATA FOR GESTURE --------------------
+
+
 
 df$summary_score = df$gesture 
 df = df[is.na(df$summary_score) == FALSE,]
@@ -2387,27 +2031,6 @@ color_scheme_set("purple")
 p<- mcmc_acf(stan_obj_mixed$draws(), pars = vars(matches(c("beta","sigma",'intercept'),)))
 #p<- mcmc_acf_bar(stan_obj_mixed$draws(), pars = c("sigma_alpha"))
 p + hline_at(0.5, linetype = 2, size = 0.15, color = "black")
-
-#Prepare summary statistics for output
-stan_obj_mixed |>
-  as_mcmc.list() %>%
-  do.call(rbind, .) |>
-  as.data.frame() |>
-  select(
-    matches(c("beta","sigma",'intercept'),)
-  ) -> scale_pars
-
-
-df_results <- data.frame(Task = c('Gesture'),
-                         N = c(for_stan$N_ids),
-                         beta_standardised = c(mean(scale_pars$beta_session)), 
-                         p_value = sum(scale_pars$beta_session <0 )/nrow(scale_pars),
-                         lower_CI = c(quantile(scale_pars$beta_session, probs=0.025)), 
-                         upper_CI = c(quantile(scale_pars$beta_session, probs=0.975)),
-                         p_rope = c(as.numeric(rope(scale_pars$beta_session,ci=1)))
-)
-rownames(df_results) = NULL
-print(df_results)
 
 df = df_clean
 

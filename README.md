@@ -62,7 +62,7 @@ Dependencies for the Python and R scripts can be found and installed from the `D
 
 3.  **Data Download**
 
-The data can be made available on reasonable request and upon institutional regulatory approval. For more information email [dragos-cristian.gruia19\@imperial.ac.uk](mailto:dragos-cristian.gruia19@imperial.ac.uk){.email}
+The data can be made available on reasonable request and upon institutional regulatory approval. For more information email [dragos-cristian.gruia19\@imperial.ac.uk](mailto:dragos-cristian.gruia19@imperial.ac.uk)
 
 ## Running the Analyses
 

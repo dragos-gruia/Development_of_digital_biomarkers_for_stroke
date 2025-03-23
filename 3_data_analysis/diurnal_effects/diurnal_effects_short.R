@@ -67,7 +67,7 @@ df %<>%
 df_clean = df
 
 
-# ANALYSE ORIENTATION -------------
+############################ ANALYSE ORIENTATION -------------------------------
  
 
 df$summary_score = df$orientation  
@@ -230,7 +230,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE PAL ------------------------------------
+############################### ANALYSE PAL ------------------------------------
 
 df$summary_score = df$pal  
 
@@ -310,7 +310,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE DIGITS SPAN ----------------------------------
+######################### ANALYSE DIGITS SPAN ----------------------------------
 
 
 df$summary_score = df$digitSpan  
@@ -391,7 +391,7 @@ df = df_clean
 
 
 
-# ANALYSE SPATIAL SPAN ---------
+################################## ANALYSE SPATIAL SPAN ------------------------
 
 
 
@@ -473,7 +473,7 @@ df = df_clean
 
 
 
-# ANALYSE COMPREHENSION. -------
+################################ ANALYSE COMPREHENSION -------------------------
 
 
 df$summary_score = df$comprehension  
@@ -554,7 +554,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE SEMANTICS ----------
+###################################### ANALYSE SEMANTICS -----------------------
 
 df$summary_score = df$semantics  
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -635,7 +635,7 @@ df = df_clean
 
 
 
-# PREPARE SPEECH -----------
+############################ PREPARE SPEECH ------------------------------------
 
 
 df = read.csv(speech_data)
@@ -650,7 +650,7 @@ df %<>%
 df_clean = df
 
 
-#  ANALYSE NAMING ---------
+##########################  ANALYSE NAMING -------------------------------------
 
 df$summary_score = df$naming  
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -740,7 +740,7 @@ df = df_clean
 
 
  
-#  ANALYSE READING ------------
+############################  ANALYSE READING ----------------------------------
 
 
 df$summary_score = df$reading  
@@ -828,7 +828,7 @@ df = df_clean
 
 
 
-#  ANALYSE REPETITION ------------
+#############################  ANALYSE REPETITION ------------------------------
  
 
 df$summary_score = df$repetition  
@@ -915,7 +915,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE BLOCKS -------
+############################## ANALYSE BLOCKS ----------------------------------
 
 df = read.csv('blocks_for_bayesianR.csv') #removed those who did not have practice trials in one of the sessions
 df$summary_score = df$SummaryScore  
@@ -997,7 +997,7 @@ df = df_clean
 
 
 
-# SWITCH TO COGNITIVE DATA -----------
+################################## SWITCH TO COGNITIVE DATA --------------------
 
 
 
@@ -1012,7 +1012,7 @@ df %<>%
 df_clean = df
 
 
-# ANALYSE TRAIL-MAKING ---------
+################################ ANALYSE TRAIL-MAKING --------------------------
 
 
 df$summary_score = df$trailAll  
@@ -1095,7 +1095,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE ODD ONE OUT -------
+##################### ANALYSE ODD ONE OUT --------------------------------------
 
 df$summary_score = df$oddOneOut  
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1174,7 +1174,7 @@ df = df_clean
 
 
 
-# ANALYSE IDED ------------
+############################### ANALYSE IDED -----------------------------------
 
 df$summary_score = df$ided  
 
@@ -1257,7 +1257,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE PEAR CANCELLATION -----------
+############################ ANALYSE PEAR CANCELLATION -------------------------
 
 df$summary_score = df$pear  
 
@@ -1338,7 +1338,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE SIMPLE REACTION TIME ------
+########################## ANALYSE SIMPLE REACTION TIME ------------------------
 
 df$summary_score = df$srt  
 to_remove = df$ID[is.na(df$summary_score) == TRUE]
@@ -1413,7 +1413,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE AUDITORY ATTENTION --------------
+####################### ANALYSE AUDITORY ATTENTION -----------------------------
 
 
 df$summary_score = df$auditoryAttention  
@@ -1495,7 +1495,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE CHOICE REACTION TIME --------
+######################### ANALYSE CHOICE REACTION TIME -------------------------
 
 
 df$summary_score = df$crt  
@@ -1575,7 +1575,7 @@ df = df_clean
 
 
 
-# ANALYSE MOTOR CONTROL -------
+############################## ANALYSE MOTOR CONTROL ---------------------------
 
 
 df$summary_score = df$motorControl  
@@ -1658,7 +1658,7 @@ df = df_clean
 
 
 
-# ANALYSE CALCULATION -----------
+############################## ANALYSE CALCULATION -----------------------------
 
 
 df$summary_score = df$calculation  
@@ -1740,7 +1740,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# ANALYSE GESTURE ----------
+################################# ANALYSE GESTURE ------------------------------
 
 df$summary_score = df$gesture  
 
@@ -1821,7 +1821,7 @@ df_results <- rbind(df_results,df_temp)
 df = df_clean
 
 
-# COMPILE RESULTS --------
+############################## COMPILE RESULTS ---------------------------------
 
 
 df_temp_all <- df_results

@@ -1,3 +1,40 @@
+# ============================================================================ #
+#  Script: Factor Analysis and Data Exploration
+#                                                                      
+#  Updated on: 5th of April                                  
+#  Author: Dragos Gruia                                
+#                                                                      
+#  Description:                                                           
+#    This script performs data preparation, exploratory factor analysis,
+#    and correlation analyses on cognitive and demographic data from a  
+#    normative cohort. The workflow includes:                         
+#      - Loading and formatting data from multiple CSV files            
+#      - Creating a combined dataset for cognitive subtests and MOCA     
+#      - Scaling and winsorizing the data                                
+#      - Generating a correlation matrix and visualizing it                      
+#      - Assessing the suitability of the data for factor analysis        
+#      - Determining the optimal number of factors via parallel analysis  
+#      - Running factor analysis using omega and generating factor scores 
+#      - Comparing factor scores between healthy controls and patients     
+#      - Plotting group differences and correlations between MOCA, IADL,   
+#        and global IC3 scores                                           
+#                                                                      
+#  Inputs:                                                        
+#    - ic3_healthy_cleaned_cog_and_demographics.csv                      
+#         Normative dataset with cognitive and demographic variables     
+#    - IC3_summaryScores_and_MOCA.csv                                    
+#         Dataset including MOCA/IADL scores and patient cognitive measures
+#                                                                      
+#  Outputs:                                                       
+#    - Correlation matrix plot of cognitive subtests                     
+#    - Factor analysis output (omega analysis, factor scores)            
+#    - Group comparison statistics (t-tests, effect size)                
+#    - ggplot2 visualizations comparing global IC3 scores with MOCA and IADL
+#    - Correlation coefficients (r, p-values, R-squared)                  
+#    - Linear model summaries predicting IADL using global IC3 and MOCA     
+#                                                                      
+# ============================================================================ #
+
 library(tidyr)
 library(dplyr)
 library(psych)
@@ -12,7 +49,7 @@ library(magrittr)
 
 options(mc.cores = 8)
 
-# Loading and formatting the data --------
+############################ LOAD AND FORMAT DATA ------------------------------
 
 df = read.csv('ic3_healthy_cleaned_cog_and_demographics.csv')
 df_all_temp <- subset(df, select=auditoryAttention:spatialSpan)
@@ -30,8 +67,15 @@ users_patients = df_moca$user_id
 df_moca = subset(df_moca, select=orientation:trailAll)
 df_moca %<>% select(order(colnames(df_moca))) %>% select(-trail1, -trail2,-trail3)
 
-tasks_order = c('orientation','taskRecall','pal','digitSpan','spatialSpan', 'comprehension', 'semantics', 'blocks', 'trailAll', 'oddOneOut', 'ided', 'pear', 'srt', 'auditoryAttention', 'crt', 'motorControl', 'calculation', 'gesture')
-task_names = c('Orientation', 'Task Recall', 'Paired Associates Learning', 'Digit Span','Spatial Span','Language Comprehension','Semantic Judgement', 'Blocks','Trail-making','Odd One Out','Rule Learning','Pear Cancellation','Simple Reaction Time','Auditory Attention','Choice Reaction Time','Motor Control','Graded Calculation','Gesture Recognition')
+tasks_order = c('orientation','taskRecall','pal','digitSpan','spatialSpan',
+                'comprehension', 'semantics', 'blocks', 'trailAll', 'oddOneOut',
+                'ided', 'pear', 'srt', 'auditoryAttention', 'crt', 'motorControl',
+                'calculation', 'gesture')
+task_names = c('Orientation', 'Task Recall', 'Paired Associates Learning',
+               'Digit Span','Spatial Span','Language Comprehension','Semantic Judgement',
+               'Blocks','Trail-making','Odd One Out','Rule Learning','Pear Cancellation',
+               'Simple Reaction Time','Auditory Attention','Choice Reaction Time',
+               'Motor Control','Graded Calculation','Gesture Recognition')
 
 df_all <- rbind(df_all_temp,df_moca)
 df_all <- df_all[,tasks_order]
@@ -45,23 +89,23 @@ df_all[,'Trail-making'] = df_all[,'Trail-making']*-1
 df_all = winsorize(df_all, threshold = c(-5,5), method='raw')
 
 
-# Creating a correlation matrix -----------
+##################### CREATE A CORRELATION MATRIX ------------------------------
 
 cor_subtests <- cor(df_all, method='pearson',use="pairwise.complete.obs")
 cor_subtests <- round(cor_subtests, 2)
 corrplot(cor_subtests, is.corr=TRUE)
 
-# Running tests to check whether the data is appropriate for factor analysis -------
+############ CHECK IF DATA IS APPROPRIATE FOR FACTOR ANALYSIS ------------------
 
 KMO(df_all)
 
 cortest.bartlett(df_all)
 
-# Assess  optimal number of factors for factor analysis ----------
+################# ASSESS OPTIMAL NUMBER OF FACTORS -----------------------------
 
 fa.parallel(df_all, fa='fa') 
 
-# Factor analysis -------
+################# RUN FACTOR ANALYSIS ------------------------------------------
 
 b4 = omega(cor_subtests, nfactors = 6, rotate='oblimin', fm='ml', digits=3, n.obs=dim(df_all)[1])
 b4
@@ -70,8 +114,7 @@ omega.diagram(b4, digits = 2)
 
 factor_scores = factor.scores(df_all, b4$schmid$sl[,1:7], rho=cor_subtests, method='tenBerge')$scores
 
-# Separate factor scores between healthy and patients and check for group differences ------
-
+# Separate factor scores between healthy and patients and check for group differences
 g_patients = factor_scores[(dim(df_all_temp)[1]+1):dim(df_all)[1],1]
 g_healthy = factor_scores[1:dim(df_all_temp)[1],1]
 
@@ -87,8 +130,7 @@ t.test(g~group,var.equal=TRUE, data=group_comparison)
 effect_d = (mean(g_healthy,na.rm=TRUE) - mean(g_patients,na.rm=TRUE))/sd(group_comparison$g,na.rm=TRUE)
 effect_d
 
-# Plot factor scores separately for healthy and patients ------
-
+# Plot factor scores separately for healthy and patients
 ggplot(group_comparison, aes(x=group,y=g)) + 
   geom_violin() +
   theme_classic() 
@@ -102,13 +144,14 @@ ggplot(group_comparison, aes(x=group,y=g)) +
   geom_jitter(shape=16, position=position_jitter(0.2),alpha=0.5)
 
 
-# Correlation between MOCA and global IC3 scores obtained from factor analysis -----
+################### PLOT CORRELATION BETWEEN MOCA AND GLOBAL IC3 scores --------
 
 df_moca['global_ic3'] =g_patients
 df_moca['user_id'] = users_patients
 
 df_patients = read.csv('IC3_summaryScores_and_MOCA.csv')
-df_patients = left_join(df_moca,subset(df_patients, select=c('Moca.total..30.','IADL','user_id')),  by= c("user_id" = "user_id"))
+df_patients = left_join(df_moca,subset(df_patients, select=c('Moca.total..30.','IADL','user_id')),
+                        by= c("user_id" = "user_id"))
 
 g = ggplot(df_patients, aes(Moca.total..30.,global_ic3)) + 
   geom_point(shape=16, size=3,color='#7851A9') +
@@ -135,7 +178,7 @@ p_value
 r_squared = r_value*r_value
 r_squared
 
-# Correlation between IADL and global IC3 scores obtained from factor analysis -----
+################### PLOT CORRELATION BETWEEN IADL AND GLOBAL IC3 scores --------
 
 g = ggplot(df_patients, aes(IADL,global_ic3)) + 
   geom_point(shape=16, size=3,color='#7851A9') +
@@ -164,7 +207,7 @@ p_value
 r_squared = r_value*r_value
 r_squared
 
-# Predict IADL using MOCA and IC3_global ---------
+############# PREDICT IADL USING MOCA AND IC3_global ---------------------------
 
 library(lme4)
 

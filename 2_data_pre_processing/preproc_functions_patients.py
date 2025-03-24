@@ -11,14 +11,15 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_of_speech, 
+def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of_speech, 
                        clinical_information=None, 
                        patient_data_folders=['/data_patients_v1', '/data_patients_v2'],
                        folder_structure=['/summary_data', '/trial_data', '/speech'], 
                        output_clean_folder='/data_patients_cleaned', 
-                       merged_data_folder='/data_patients_merged', 
+                       merged_data_folder='/data_patients_combined', 
                        clean_file_extension='_cleaned', 
-                       data_format='.csv'):
+                       data_format='.csv',
+                       append_data = False):
     """
     Perform the main preprocessing workflow for patient data.
 
@@ -56,7 +57,7 @@ def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_o
     output_clean_folder : str, optional
         The folder where the cleaned data will be saved (default is '/data_patients_cleaned').
     merged_data_folder : str, optional
-        The folder where merged data is stored (default is '/data_patients_merged').
+        The folder where merged data is stored (default is '/data_patients_combined').
     clean_file_extension : str, optional
         Suffix appended to preprocessed file names (default is '_cleaned').
     data_format : str, optional
@@ -80,6 +81,7 @@ def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_o
     ... )
     >>> combined_df.head()
     """
+    
     print('Starting preprocessing...')
     
     # Change working directory to root_path.
@@ -165,7 +167,6 @@ def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_o
                         root_path, merged_data_folder, output_clean_folder,
                         questionnaire_name, folder_structure, data_format, clean_file_extension
                     )
-
                 case 'q_IC3_IADL':
                     df_iadl = iadl_preproc(
                         root_path, merged_data_folder, questionnaire_name,
@@ -192,7 +193,20 @@ def main_preprocessing2(root_path, list_of_tasks, list_of_questionnaires, list_o
     
     # Save final combined DataFrame as an Excel file.
     output_excel = os.path.join(root_path, output_clean_folder.strip('/'), folder_structure[0].strip('/'), "summary_cognition_and_demographics.xlsx")
-    df_combined.to_excel(output_excel, index=False)
+    
+    if append_data:
+        if os.path.exists(output_excel):  
+            df_append = pd.read_excel(output_excel) 
+            df_combined = pd.concat([df_combined,df_append])
+            df_combined = df_combined.drop_duplicates(subset='user_id',keep='first')
+            df_combined.to_excel(output_excel, index=False)
+            print('Data appended successfully.') 
+        else:
+            print('Appending failed because there is no file to append to. The file has been saved without appending.')
+            df_combined.to_excel(output_excel, index=False)
+
+    else:
+        df_combined.to_excel(output_excel, index=False)
     
     return df_combined
 
@@ -414,9 +428,7 @@ def merge_speech_data(root, folder_structure, patient_data_folders, list_of_spee
     merge_and_save : Function to merge a list of DataFrames and save them to a CSV file.
     """
     
-    for task in list_of_speech:
-        print(task)
-        
+    for task in list_of_speech:        
         df_v1_raw = load_task_data(root, patient_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
         df_v2_raw = load_task_data(root, patient_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
         
@@ -1675,7 +1687,6 @@ def srt_preproc(df,df_raw):
     
     df_raw.loc[df_raw.RT<180,'RT'] = np.nan
     df_raw.loc[df_raw.RT>1000,'RT'] = np.nan
-
 
     meanRTs =[None] * len(df.user_id)
     medianRTs =[None] * len(df.user_id)

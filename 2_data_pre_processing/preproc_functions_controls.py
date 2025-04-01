@@ -23,7 +23,8 @@ def main_preprocessing(
     output_clean_folder='/data_healthy_cleaned',
     merged_data_folder='/data_healthy_combined',
     clean_file_extension='_cleaned',
-    data_format='.csv'
+    data_format='.csv',
+    append_data = False
 ):
     
     """
@@ -54,6 +55,9 @@ def main_preprocessing(
         Suffix to append to cleaned files (default: '_cleaned').
     data_format : str, optional
         Data file format (default: '.csv').
+    append_data : bool, optional
+        Append data to existing file or overwrite existing excel file (default is False).
+
     """
     
     print('Starting preprocessing...')

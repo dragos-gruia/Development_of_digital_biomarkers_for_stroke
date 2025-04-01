@@ -1,5 +1,5 @@
 """
-Last updated on 21st of March 2025
+Last updated on 25th of March 2025
 @authors: Dragos Gruia
 """
 
@@ -62,6 +62,8 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
         Suffix appended to preprocessed file names (default is '_cleaned').
     data_format : str, optional
         File extension (default is '.csv').
+    append_data : bool, optional
+        Append data to existing file or overwrite existing excel file (default is False).
 
     Returns
     -------
@@ -93,13 +95,16 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
     df_combined = pd.DataFrame()
 
     # Merge patient data across sites.
-    print('Merging data across sites...', end="", flush=True)
-    merge_patient_data_across_sites(
-        root_path, folder_structure, patient_data_folders, 
-        list_of_tasks, list_of_questionnaires, list_of_speech, 
-        data_format, merged_data_folder
-    )
-    print('Done')
+    if len(patient_data_folders) > 1:
+        print('Merging data across sites...', end="", flush=True)
+        merge_patient_data_across_sites(
+            root_path, folder_structure, patient_data_folders, 
+            list_of_tasks, list_of_questionnaires, list_of_speech, 
+            data_format, merged_data_folder
+        )
+        print('Done')
+    else:
+        merged_data_folder = patient_data_folders[0]
 
     # Process cognitive tasks.
     if list_of_tasks is not None:
@@ -152,20 +157,22 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
                     continue
             
             # Save the preprocessed task output.
-            output_preprocessed_data(df, df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format)
+            output_preprocessed_data(df, df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format, append_data)
             print('Done')
     else:
         print('No tasks were provided.')
     
     # Process questionnaires.
+    harcode_cleaning  = False if len(patient_data_folders) == 1 else True
     if list_of_questionnaires is not None:
         for questionnaire_name in list_of_questionnaires:
             print(f'Pre-processing {questionnaire_name}...', end="", flush=True)
+            
             match questionnaire_name:
                 case 'q_IC3_demographics':
                     df_demographics = demographics_preproc(
                         root_path, merged_data_folder, output_clean_folder,
-                        questionnaire_name, folder_structure, data_format, clean_file_extension
+                        questionnaire_name, folder_structure, data_format, clean_file_extension, harcode_cleaning
                     )
                 case 'q_IC3_IADL':
                     df_iadl = iadl_preproc(
@@ -182,13 +189,15 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
     if not df_demographics.empty:
         df_combined = combine_demographics_and_cognition(
             root_path, output_clean_folder, folder_structure, list_of_tasks,
-            df_demographics, clean_file_extension, data_format, clinical_information
+            df_demographics, clean_file_extension, data_format, clinical_information, harcode_cleaning
         )
     
     # Merge IADL summary with combined data if available.
-    if not df_iadl.empty:
+    try:
         df_combined = df_combined.merge(df_iadl, on='user_id', how='left')
-    
+    except:
+        print('IADL does not exist and it was now merged.')
+        
     print('Preprocessing complete.')
     
     # Save final combined DataFrame as an Excel file.
@@ -198,13 +207,12 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
         if os.path.exists(output_excel):  
             df_append = pd.read_excel(output_excel) 
             df_combined = pd.concat([df_combined,df_append])
-            df_combined = df_combined.drop_duplicates(subset='user_id',keep='first')
+            df_combined = df_combined.drop_duplicates(subset='user_id',keep='last').reset_index(drop=True)
             df_combined.to_excel(output_excel, index=False)
             print('Data appended successfully.') 
         else:
             print('Appending failed because there is no file to append to. The file has been saved without appending.')
             df_combined.to_excel(output_excel, index=False)
-
     else:
         df_combined.to_excel(output_excel, index=False)
     
@@ -500,7 +508,7 @@ import datetime
 
 def combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure,
                                        list_of_tasks, df_demographics, clean_file_extension,
-                                       data_format, clinical_information):
+                                       data_format, clinical_information, harcode_cleaning):
     """
     Combine demographics data with cognitive task scores and optional clinical information.
 
@@ -597,8 +605,9 @@ def combine_demographics_and_cognition(root_path, output_clean_folder, folder_st
     df_demographics['ID'] = df_demographics['user_id'].apply(extract_id)
 
     # Correct naming and technical errors using external functions.
-    df_demographics = fix_naming_errors(df_demographics)
-    df_demographics = remove_technical_errors(df_demographics)
+    if harcode_cleaning:
+        df_demographics = fix_naming_errors(df_demographics)
+        df_demographics = remove_technical_errors(df_demographics)
 
     # Merge clinical information if provided.
     if clinical_information is not None:
@@ -882,7 +891,7 @@ def iadl_preproc(root_path, merged_data_folder, questionnaire_name, folder_struc
     
 
 def demographics_preproc(root_path, merged_data_folder, output_clean_folder, questionnaire_name,
-                         folder_structure, data_format,clean_file_extension):
+                         folder_structure, data_format,clean_file_extension, harcode_cleaning):
     """
     Preprocess and clean demographic questionnaire data.
 
@@ -1069,19 +1078,20 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
     
     # Update missing or inconsistent data
     
-    pat_demographics.index = pat_demographics.user_id
-    pat_demographics.loc['00009-session1-versionA',:] = pat_demographics.loc['ic3study00009-session2-versionA',:].values.tolist()
-    pat_demographics.loc['ic3study00019-session1-versionA',:] = pat_demographics.loc['ic3study00019-session2-versionB',:].values.tolist()
-    pat_demographics.loc['ic3study00035-session2-versionB',:] = pat_demographics.loc['ic3study00035-session1-versionA',:].values.tolist()
-    pat_demographics.loc['ic3study00041-session2-versionB',:] = pat_demographics.loc['ic3study00041-session1-versionA',:].values.tolist()
-    pat_demographics.loc['ic3study00041-session2-versionB','device'] = 'Tablet'
-    pat_demographics.loc['ic3study00050-session1-versionA',:] = pat_demographics.loc['ic3study00050-session2-versionB',:].values.tolist()
-    pat_demographics.loc['ic3study00050-session1-versionA','device'] = 'Tablet'
-    pat_demographics.loc['ic3study00051-session1-versionA',:] = pat_demographics.loc['00051-session2-versionB',:].values.tolist()
-    pat_demographics.loc['ic3study00051-session1-versionA','device'] = 'Tablet'
-    pat_demographics.loc['ic3study00095-session1-versionA',:] = pat_demographics.loc['ic3study00095-session2-versionB',:].values.tolist()
-    pat_demographics.drop(columns='user_id', inplace=True)
-    pat_demographics.reset_index(drop=False,inplace=True)
+    if harcode_cleaning:
+        pat_demographics.index = pat_demographics.user_id
+        pat_demographics.loc['00009-session1-versionA',:] = pat_demographics.loc['ic3study00009-session2-versionA',:].values.tolist()
+        pat_demographics.loc['ic3study00019-session1-versionA',:] = pat_demographics.loc['ic3study00019-session2-versionB',:].values.tolist()
+        pat_demographics.loc['ic3study00035-session2-versionB',:] = pat_demographics.loc['ic3study00035-session1-versionA',:].values.tolist()
+        pat_demographics.loc['ic3study00041-session2-versionB',:] = pat_demographics.loc['ic3study00041-session1-versionA',:].values.tolist()
+        pat_demographics.loc['ic3study00041-session2-versionB','device'] = 'Tablet'
+        pat_demographics.loc['ic3study00050-session1-versionA',:] = pat_demographics.loc['ic3study00050-session2-versionB',:].values.tolist()
+        pat_demographics.loc['ic3study00050-session1-versionA','device'] = 'Tablet'
+        pat_demographics.loc['ic3study00051-session1-versionA',:] = pat_demographics.loc['00051-session2-versionB',:].values.tolist()
+        pat_demographics.loc['ic3study00051-session1-versionA','device'] = 'Tablet'
+        pat_demographics.loc['ic3study00095-session1-versionA',:] = pat_demographics.loc['ic3study00095-session2-versionB',:].values.tolist()
+        pat_demographics.drop(columns='user_id', inplace=True)
+        pat_demographics.reset_index(drop=False,inplace=True)
 
     # Ensure education is of integer type
     pat_demographics['education'] = pat_demographics['education'].astype(int)
@@ -1176,7 +1186,7 @@ def remove_general_outliers(root_path, merged_data_folder, task_name, data_forma
 
     return df, df_raw
 
-def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format):
+def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format, append_data):
     
     """
     Output pre-processed data to designated clean folders.
@@ -1205,6 +1215,8 @@ def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_s
         A suffix to append to the filename (e.g., '_clean') before the data format extension.
     data_format : str
         The file extension indicating the data format (e.g., '.csv').
+    append_data : bool, optional
+        Append data to existing file or overwrite existing excel file (default is False).
 
     """
     
@@ -1214,7 +1226,13 @@ def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_s
         os.mkdir(output_clean_folder[1:])
         os.mkdir(f'.{output_clean_folder}{folder_structure[0]}')
         os.mkdir(f'.{output_clean_folder}{folder_structure[1]}')
-
+        
+    if append_data:
+        df_temp = pd.read_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}{clean_file_extension}{data_format}")
+        df_temp_raw = pd.read_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw{clean_file_extension}{data_format}")
+        df = pd.concat([df_temp,df], axis=0).drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)
+        df_raw = pd.concat([df_temp_raw,df_raw], axis=0).drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)
+        
     df.to_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}{clean_file_extension}{data_format}", index=False)
     df_raw.to_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw{clean_file_extension}{data_format}")
 

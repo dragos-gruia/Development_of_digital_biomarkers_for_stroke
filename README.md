@@ -1,8 +1,8 @@
 # Development of digital biomarkers for assessing and monitoring cognitive function after stroke
 
-## Paper Summary
+## Executive Summary
 
-This repository contains the pre-processing scripts, and analysis pipelines associated with the paper **"Online monitoring technology for deep phenotyping of cognitive impairment after stroke"** In this study, I developed a digital health assessment technology highly optimised for stroke survivors, and specifically designed for unsupervised administration. Through a broad spectrum of analyses, I show that the outcomes derived from the technology not only have high validity and reliability, but also outperform existing clinical assessments.
+This repository contains the pre-processing scripts, and analysis pipelines associated with the paper **"Online monitoring technology for deep phenotyping of cognitive impairment after stroke"** In this study, I developed a digital health assessment technology for deriving clinically-relevant digital biomarkers in patients with cerebrovascular disease. Through a broad spectrum of analyses, I show that the outcomes derived from the technology not only have high validity and reliability, but also outperform existing clinical assessments.
 
 ## Statistical techniques applied in the paper
 

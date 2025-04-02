@@ -2658,11 +2658,11 @@ def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>15000,'RT'] = np.nan
     
-    df_raw2.loc[df_raw.RT<200,'RT'] = np.nan
-    df_raw2.loc[df_raw.RT>15000,'RT'] = np.nan
+    df_raw2.loc[df_raw2.RT<200,'RT'] = np.nan
+    df_raw2.loc[df_raw2.RT>15000,'RT'] = np.nan
 
-    df_raw3.loc[df_raw.RT<200,'RT'] = np.nan
-    df_raw3.loc[df_raw.RT>15000,'RT'] = np.nan
+    df_raw3.loc[df_raw3.RT<200,'RT'] = np.nan
+    df_raw3.loc[df_raw3.RT>15000,'RT'] = np.nan
 
 
     scores = [None] * len(df.user_id)

@@ -74,19 +74,21 @@ def main_preprocessing(
     print('Cleaning normative data. Creating inclusion criteria...', end="", flush=True)
 
     inclusion_criteria = create_inclusion_criteria(root_path, remote_data_folders, supervised_data_folders, folder_structure)
-
     # Save inclusion criteria
-    inclusion_criteria_path = os.path.join(merged_data_dir, 'inclusion_criteria.csv')
-    inclusion_criteria.to_csv(inclusion_criteria_path, index=False)
+    #inclusion_criteria_path = os.path.join(merged_data_dir, 'inclusion_criteria.csv')
+    #inclusion_criteria.to_csv(inclusion_criteria_path, index=False)
     print('Done')
 
     # ----- Merging data across sites -----
     
     print('Merging data across sites...', end="", flush=True)
-    list_of_tasks = merge_control_data_across_sites(
-        root_path, folder_structure, supervised_data_folders, remote_data_folders,
-        list_of_tasks, list_of_questionnaires, list_of_speech, data_format, merged_data_folder
-    )
+    if (supervised_data_folders is None):
+        merged_data_folder = remote_data_folders
+    else:
+        list_of_tasks = merge_control_data_across_sites(
+            root_path, folder_structure, supervised_data_folders, remote_data_folders,
+            list_of_tasks, list_of_questionnaires, list_of_speech, data_format, merged_data_folder
+        )
     print('Done')
     
     # ----- Pre-processing task data -----
@@ -161,7 +163,7 @@ def main_preprocessing(
                     print(f'Task {task_name} does not have a specific preprocessing function.')
                     continue
             
-            output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure,  clean_file_extension, data_format)
+            output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure,  clean_file_extension, data_format, append_data)
             print('Done')
     else:
         print('No tasks were provided.') 
@@ -171,7 +173,7 @@ def main_preprocessing(
     if list_of_questionnaires:
         for questionnaire_name in list_of_questionnaires:
             process_questionnaire(questionnaire_name, root_path, merged_data_folder, inclusion_criteria,
-                                  folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks)
+                                  folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks,append_data)
     else:
         print('No questionnaires were provided.')
                    
@@ -216,20 +218,25 @@ def create_inclusion_criteria(root_path, remote_data_folders, supervised_data_fo
     general_outlier_detection_supervisedSetting : Function that detects outliers in supervised data.
     """
     
-    ids_remote = general_outlier_detection_remoteSetting(
-        root_path, remote_data_folders, folder_structure
-    )
-    ids_supervised = general_outlier_detection_supervisedSetting(
-        root_path, supervised_data_folders, folder_structure
-    )
-    
-    inclusion_criteria = pd.concat([ids_remote, ids_supervised], ignore_index=True)
+    if remote_data_folders is not None:
+        ids_remote = general_outlier_detection_remoteSetting(
+            root_path, remote_data_folders, folder_structure
+        )
+        inclusion_criteria = ids_remote
+    if supervised_data_folders is not None:
+        ids_supervised = general_outlier_detection_supervisedSetting(
+            root_path, supervised_data_folders, folder_structure
+        )
+        inclusion_criteria = ids_supervised
+        
+    if (remote_data_folders is not None) & (supervised_data_folders is not None):
+        inclusion_criteria = pd.concat([ids_remote, ids_supervised], ignore_index=True)
     inclusion_criteria.reset_index(drop=True, inplace=True)
-    
+
     return inclusion_criteria
 
 
-def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inclusion_criteria, folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks):
+def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inclusion_criteria, folder_structure, data_format, clean_file_extension, output_clean_folder, list_of_tasks, append_data):
     """
     Process a questionnaire using a match-case structure.
 
@@ -274,10 +281,10 @@ def process_questionnaire(questionnaire_name, root_path, merged_data_folder, inc
     match questionnaire_name:
         case 'q_IC3_demographics':
             df_demographics = demographics_preproc(
-                root_path, merged_data_folder, output_clean_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension
+                root_path, merged_data_folder, output_clean_folder, questionnaire_name, inclusion_criteria, folder_structure, data_format, clean_file_extension, append_data
             )
             combine_demographics_and_cognition(
-                root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format
+                root_path, output_clean_folder, folder_structure, list_of_tasks, df_demographics, clean_file_extension, data_format, append_data
             )
             print('Done')
         case _:
@@ -540,7 +547,7 @@ def merge_control_data_across_sites(root_path, folder_structure, supervised_data
     
     for folder in folder_structure:
         ensure_directory(os.path.join(output_base, folder.strip("/")))
-    
+        
     # Merge clinical test data
     merge_clinical_tests(root_path, folder_structure, supervised_data_folders,
                                          remote_data_folders, list_of_tasks, data_format, output_base)
@@ -552,7 +559,7 @@ def merge_control_data_across_sites(root_path, folder_structure, supervised_data
     merge_questionnaire_data(root_path, folder_structure, supervised_data_folders, remote_data_folders,
                              list_of_questionnaires,  data_format, output_base)
     
-    return None
+    return list_of_tasks
 
 
 def load_task_data(root, data_folder, subfolder, task, data_format, raw=False, version_suffix=''):
@@ -608,7 +615,6 @@ def merge_and_save(df_list, output_file):
 
     """
     merged_df = pd.concat(df_list, ignore_index=True)
-    print(len(merged_df))
     merged_df.to_csv(output_file, index=False)
 
 def merge_clinical_tests(root, folder_structure, supervised_data_folders, remote_data_folder, tasks, data_format, output_base):
@@ -666,18 +672,21 @@ def merge_clinical_tests(root, folder_structure, supervised_data_folders, remote
             df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0], task, data_format, raw=False)
             df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1], task, data_format, raw=True)
         
-        # Remote data source
-        df_cog = load_task_data(root, remote_data_folder, folder_structure[0], task, data_format, raw=False)
-        df_cog_raw = load_task_data(root, remote_data_folder, folder_structure[1], task, data_format, raw=True)
-        
-        print(task)
-        
-        # Merge the three sources
         summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
-        merge_and_save([df_v1, df_v2, df_cog], summary_out)
-        
         raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
-        merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw],raw_out)
+        if remote_data_folder is not None:
+            # Remote data source
+            df_cog = load_task_data(root, remote_data_folder, folder_structure[0], task, data_format, raw=False)
+            df_cog_raw = load_task_data(root, remote_data_folder, folder_structure[1], task, data_format, raw=True)
+            # Merge all three sources
+            merge_and_save([df_v1, df_v2, df_cog], summary_out)
+            merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw],raw_out)
+            
+        else:
+            # Merge the two supervised sources
+            merge_and_save([df_v1, df_v2], summary_out)
+            merge_and_save([df_v1_raw, df_v2_raw],raw_out)
+            
 
         # Optionally log progress: print(f'Merged clinical test data for {task}')
 
@@ -713,14 +722,11 @@ def merge_speech_data(root, folder_structure, supervised_data_folders, list_of_s
     """
     
     for task in list_of_speech:
-        print(task)
-        
         df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
         df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
         
         raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
         merge_and_save([df_v1_raw, df_v2_raw], raw_out)
-        
         
         # Optionally log progress: print(f'Merged speech data for {task}')
 
@@ -760,8 +766,6 @@ def merge_questionnaire_data(root, folder_structure, supervised_data_folders, re
     """
     
     for task in list_of_questionnaires:
-        
-        print(task)
 
         if task == 'q_IC3_demographics':
             
@@ -775,20 +779,23 @@ def merge_questionnaire_data(root, folder_structure, supervised_data_folders, re
             df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
             df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
             
-            # Remote data source
-            df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='Healthy_questionnaire')
-            df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True, version_suffix='Healthy')
-
             summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
-            merge_and_save([df_v1, df_v1_2, df_v2, df_cog], summary_out)
-            
             raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
-            merge_and_save([df_v1_raw, df_v1_raw_2, df_v2_raw, df_cog_raw], raw_out)
+            if remote_data_folder is not None:
+                # Remote data source
+                df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='Healthy_questionnaire')
+                df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True, version_suffix='Healthy')
+                merge_and_save([df_v1, df_v1_2, df_v2, df_cog], summary_out)
+                merge_and_save([df_v1_raw, df_v1_raw_2, df_v2_raw, df_cog_raw], raw_out)
+            else:
+                merge_and_save([df_v1, df_v1_2, df_v2], summary_out)
+                merge_and_save([df_v1_raw, df_v1_raw_2, df_v2_raw], raw_out)
+            
 
         else:
             # For all other questionnaires
+            
             # Supervised source 1
-
             df_v1 = load_task_data(root, supervised_data_folders[0], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
             df_v1_raw = load_task_data(root, supervised_data_folders[0], folder_structure[1].strip("/"), task, data_format, raw=True)
 
@@ -796,15 +803,17 @@ def merge_questionnaire_data(root, folder_structure, supervised_data_folders, re
             df_v2 = load_task_data(root, supervised_data_folders[1], folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
             df_v2_raw = load_task_data(root, supervised_data_folders[1], folder_structure[1].strip("/"), task, data_format, raw=True)
             
-            # Remote data source
-            df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
-            df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True)
-            
             summary_out = os.path.join(output_base, folder_structure[0].strip("/"), f"{task}{data_format}")
-            merge_and_save([df_v1, df_v2, df_cog], summary_out)
-            
             raw_out = os.path.join(output_base, folder_structure[1].strip("/"), f"{task}_raw{data_format}")
-            merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw], raw_out)
+            if remote_data_folder is not None:
+                # Remote data source
+                df_cog =  load_task_data(root, remote_data_folder, folder_structure[0].strip("/"), task, data_format, raw=False, version_suffix='_questionnaire')
+                df_cog_raw =  load_task_data(root, remote_data_folder, folder_structure[1].strip("/"), task, data_format, raw=True)
+                merge_and_save([df_v1, df_v2, df_cog], summary_out)
+                merge_and_save([df_v1_raw, df_v2_raw, df_cog_raw], raw_out)
+            else:
+                merge_and_save([df_v1, df_v2], summary_out)
+                merge_and_save([df_v1_raw, df_v2_raw], raw_out)   
             
         # Optionally log progress: print(f'Merged questionnaire data for {task}')
 
@@ -812,7 +821,7 @@ def merge_questionnaire_data(root, folder_structure, supervised_data_folders, re
 
 def combine_demographics_and_cognition(root_path, output_clean_folder, folder_structure,
                                          list_of_tasks, df_demographics,
-                                         clean_file_extension, data_format):
+                                         clean_file_extension, data_format, append_data):
     """
     Combine demographic data with cognitive task scores.
 
@@ -881,14 +890,25 @@ def combine_demographics_and_cognition(root_path, output_clean_folder, folder_st
     
     # Save the merged DataFrame
     output_file = os.path.join(tasks_folder, "summary_cognition_and_demographics_new.csv")
-    df_demographics.to_csv(output_file, index=False)
     
+    if append_data:
+        if os.path.exists(output_file):  
+            df_append = pd.read_csv(output_file) 
+            df_demographics = pd.concat([df_demographics,df_append])
+            df_demographics = df_demographics.drop_duplicates(subset='user_id',keep='last').reset_index(drop=True)
+            df_demographics.to_csv(output_file, index=False)
+        else:
+            print('Appending demographics failed because there is no file to append to. The file has been saved without appending.')
+            df_demographics.to_csv(output_file, index=False)
+    else:
+        df_demographics.to_csv(output_file, index=False)
+        
     return df_demographics
  
 
 def demographics_preproc(root_path, merged_data_folder, output_clean_folder, questionnaire_name,
                          inclusion_criteria, folder_structure, data_format,
-                         clean_file_extension):
+                         clean_file_extension, append_data):
     """
     Preprocess and clean demographic questionnaire data.
 
@@ -1101,8 +1121,19 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
     # Save the final DataFrame
     output_path = os.path.join(root_path, output_clean_folder.strip('/'), folder_structure[0].strip('/'),
                                f"{questionnaire_name}{clean_file_extension}{data_format}")
-    one_hot_encoded_data.to_csv(output_path, index=False)
-
+    
+    if append_data:
+        if os.path.exists(output_path):  
+            df_append = pd.read_csv(output_path) 
+            one_hot_encoded_data = pd.concat([one_hot_encoded_data,df_append])
+            one_hot_encoded_data = one_hot_encoded_data.drop_duplicates(subset='user_id',keep='last').reset_index(drop=True)
+            one_hot_encoded_data.to_csv(output_path, index=False)
+        else:
+            print('Appending demographics failed because there is no file to append to. The file has been saved without appending.')
+            one_hot_encoded_data.to_csv(output_path, index=False)
+    else:
+        one_hot_encoded_data.to_csv(output_path, index=False)
+        
     return one_hot_encoded_data
 
   
@@ -1175,7 +1206,7 @@ def remove_general_outliers(root_path, merged_data_folder, task_name, inclusion_
     return df,df_raw
 
 
-def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format):
+def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_structure, clean_file_extension, data_format, append_data):
     
     """
     Output pre-processed data to designated clean folders.
@@ -1213,6 +1244,12 @@ def output_preprocessed_data(df,df_raw, root_path, output_clean_folder, folder_s
         os.mkdir(output_clean_folder[1:])
         os.mkdir(f'.{output_clean_folder}{folder_structure[0]}')
         os.mkdir(f'.{output_clean_folder}{folder_structure[1]}')
+        
+    if append_data:
+        df_temp = pd.read_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}{clean_file_extension}{data_format}")
+        df_temp_raw = pd.read_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw{clean_file_extension}{data_format}")
+        df = pd.concat([df_temp,df], axis=0).drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)
+        df_raw = pd.concat([df_temp_raw,df_raw], axis=0).drop_duplicates(subset='user_id', keep='last').reset_index(drop=True)  
 
     df.to_csv(f".{output_clean_folder}{folder_structure[0]}/{df.loc[0,'taskID']}{clean_file_extension}{data_format}", index=False)
     df_raw.to_csv(f".{output_clean_folder}{folder_structure[1]}/{df.loc[0,'taskID']}_raw{clean_file_extension}{data_format}")
@@ -2667,11 +2704,11 @@ def trailmaking_preproc(df,df2,df3,df_raw,df_raw2,df_raw3, task_name):
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>10000,'RT'] = np.nan
     
-    df_raw2.loc[df_raw.RT<200,'RT'] = np.nan
-    df_raw2.loc[df_raw.RT>10000,'RT'] = np.nan
+    df_raw2.loc[df_raw2.RT<200,'RT'] = np.nan
+    df_raw2.loc[df_raw2.RT>10000,'RT'] = np.nan
 
-    df_raw3.loc[df_raw.RT<200,'RT'] = np.nan
-    df_raw3.loc[df_raw.RT>10000,'RT'] = np.nan
+    df_raw3.loc[df_raw3.RT<200,'RT'] = np.nan
+    df_raw3.loc[df_raw3.RT>10000,'RT'] = np.nan
 
     scores = [None] * len(df.user_id)
     errors = [None] * len(df.user_id)

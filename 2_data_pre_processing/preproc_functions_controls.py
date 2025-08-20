@@ -1025,6 +1025,7 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
 
     def clean_device(df, summary_df):
         df = df.merge(summary_df[['user_id', 'os']], on='user_id', how='outer')
+        df['os'] = df.os.apply(lambda x: ast.literal_eval(x)[0] if ',' in x else x)
         df['response'] = df['response'].fillna(df['os'])
         df['response'] = df['response'].replace({'Mac OS X': 'Tablet', 'Android': 'Phone', 'Windows': 'Laptop/Computer', 'iOS': 'Phone', 'Chrome OS': 'Laptop/Computer'})
         df.drop(columns='os', inplace=True)
@@ -1681,8 +1682,8 @@ def semantics_preproc(df,df_raw):
         df_raw_temp = df_raw[df_raw.user_id == id]
         errors[count] = (sum(df_raw_temp.correct == False))
         temp_score = df_raw_temp.groupby("Level")["correct"].sum()
-        for x in range (len(temp_score)-1):
-            if temp_score[x] >3:
+        for x in range (len(temp_score)):
+            if (temp_score[x] >3) & (x!=5):
                 temp_score[x] = 3
         scores[count]= sum(temp_score)
         shortRTs[count]= sum(df_raw_temp.RT < 1000)

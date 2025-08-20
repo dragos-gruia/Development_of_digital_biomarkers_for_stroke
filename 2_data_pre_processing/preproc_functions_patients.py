@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import warnings
+import ast 
 
 warnings.filterwarnings('ignore')
 
@@ -19,7 +20,8 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
                        merged_data_folder='/data_patients_combined', 
                        clean_file_extension='_cleaned', 
                        data_format='.csv',
-                       append_data = False):
+                       append_data = False,
+                       harcode_cleaning=False):
     """
     Perform the main preprocessing workflow for patient data.
 
@@ -64,6 +66,9 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
         File extension (default is '.csv').
     append_data : bool, optional
         Append data to existing file or overwrite existing excel file (default is False).
+    hardcode_cleaning : bool, optional
+        It removes tasks which are deemed unreliable according to clinical notes. 
+        THIS IS CURRENTLY OUTDATED. FOR ALL NEW PATIENTS UPDATE WITH UP TO DATE CLINICAL NOTES. 
 
     Returns
     -------
@@ -163,7 +168,6 @@ def main_preprocessing(root_path, list_of_tasks, list_of_questionnaires, list_of
         print('No tasks were provided.')
     
     # Process questionnaires.
-    harcode_cleaning  = False if len(patient_data_folders) == 1 else True
     if list_of_questionnaires is not None:
         for questionnaire_name in list_of_questionnaires:
             print(f'Pre-processing {questionnaire_name}...', end="", flush=True)
@@ -606,22 +610,23 @@ def combine_demographics_and_cognition(root_path, output_clean_folder, folder_st
 
     # Correct naming and technical errors using external functions.
     if harcode_cleaning:
-        df_demographics = fix_naming_errors(df_demographics)
+        #df_demographics = fix_naming_errors(df_demographics)
         df_demographics = remove_technical_errors(df_demographics)
 
     # Merge clinical information if provided.
     if clinical_information is not None:
         try:
-            df_clinical = pd.read_excel(clinical_information, sheet_name='Patient ')
+            df_clinical = pd.read_excel(clinical_information, sheet_name='Patient ', dtype={"STUDY ID AT RECRUITMENT": "string"})
         except Exception as e:
             print(f"Error reading clinical information: {e}")
             return df_demographics
 
-        clinical_cols = ['STUDY ID', 'CVA date', 'CVA aetiology', 'vascular teritory',
+        clinical_cols = ['STUDY ID AT RECRUITMENT', 'CVA date', 'CVA aetiology', 'vascular teritory',
                          'lesion site', 'Aphasia', 'CVA non-cognitive deficit',
                          'NIHSS at admission or 2 hours after thrombectomy/thrombolysis']
         df_clinical = df_clinical.loc[:, clinical_cols]
-        df_clinical.rename(columns={'STUDY ID': 'ID'}, inplace=True)
+        df_clinical.rename(columns={'STUDY ID AT RECRUITMENT': 'ID'}, inplace=True)
+        
         df_clinical['ID'] = df_clinical['ID'].apply(lambda x: x.strip() if pd.notnull(x) else x)
 
         df_combined = pd.merge(df_demographics, df_clinical, on='ID', how='left')
@@ -634,12 +639,12 @@ def combine_demographics_and_cognition(root_path, output_clean_folder, folder_st
         df_combined['CVA date'] = pd.to_datetime(df_combined['CVA date'])
         df_combined['days_since_stroke'] = (df_combined['date_of_ic3'] - df_combined['CVA date']).dt.days
 
-        output_file = os.path.join(root_path, "summary_cognition_and_demographics.xlsx")
-        df_combined.to_excel(output_file, index=False)
+        #output_file = os.path.join(root_path, "summary_cognition_and_demographics.xlsx")
+        #df_combined.to_excel(output_file, index=False)
         return df_combined
     else:
-        output_file = os.path.join(root_path, "summary_cognition_and_demographics.xlsx")
-        df_demographics.to_excel(output_file, index=False)
+        #output_file = os.path.join(root_path, "summary_cognition_and_demographics.xlsx")
+        #df_demographics.to_excel(output_file, index=False)
         return df_demographics
 
 def remove_technical_errors(df_demographics):
@@ -979,6 +984,7 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
         df.replace({'Male': 0, 'Female': 1}, inplace=True)
         df.drop_duplicates(subset='user_id', keep='last', inplace=True)
         df.dropna(inplace=True)
+        df.response = df.response.astype(float)
         df.rename(columns={'response': 'gender'}, inplace=True)
         return df
 
@@ -1004,6 +1010,9 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
 
     def clean_device(df, summary_df):
         df = df.merge(summary_df[['user_id', 'os']], on='user_id', how='outer')
+        
+        
+        df['os'] = df.os.apply(lambda x: ast.literal_eval(x)[0] if ',' in x else x)
         df['response'] = df['response'].fillna(df['os'])
         df['response'] = df['response'].replace({'Mac OS X': 'Tablet', 'Android': 'Phone', 'Windows': 'Laptop/Computer', 'iOS': 'Phone', 'Chrome OS': 'Laptop/Computer'})
         df.drop(columns='os', inplace=True)
@@ -1077,21 +1086,20 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
     pat_demographics = pat_demographics.dropna()
     
     # Update missing or inconsistent data
-    
-    if harcode_cleaning:
-        pat_demographics.index = pat_demographics.user_id
-        pat_demographics.loc['00009-session1-versionA',:] = pat_demographics.loc['ic3study00009-session2-versionA',:].values.tolist()
-        pat_demographics.loc['ic3study00019-session1-versionA',:] = pat_demographics.loc['ic3study00019-session2-versionB',:].values.tolist()
-        pat_demographics.loc['ic3study00035-session2-versionB',:] = pat_demographics.loc['ic3study00035-session1-versionA',:].values.tolist()
-        pat_demographics.loc['ic3study00041-session2-versionB',:] = pat_demographics.loc['ic3study00041-session1-versionA',:].values.tolist()
-        pat_demographics.loc['ic3study00041-session2-versionB','device'] = 'Tablet'
-        pat_demographics.loc['ic3study00050-session1-versionA',:] = pat_demographics.loc['ic3study00050-session2-versionB',:].values.tolist()
-        pat_demographics.loc['ic3study00050-session1-versionA','device'] = 'Tablet'
-        pat_demographics.loc['ic3study00051-session1-versionA',:] = pat_demographics.loc['00051-session2-versionB',:].values.tolist()
-        pat_demographics.loc['ic3study00051-session1-versionA','device'] = 'Tablet'
-        pat_demographics.loc['ic3study00095-session1-versionA',:] = pat_demographics.loc['ic3study00095-session2-versionB',:].values.tolist()
-        pat_demographics.drop(columns='user_id', inplace=True)
-        pat_demographics.reset_index(drop=False,inplace=True)
+
+    pat_demographics.index = pat_demographics.user_id
+    pat_demographics.loc['00009-session1-versionA',:] = pat_demographics.loc['ic3study00009-session2-versionA',:].values.tolist()
+    pat_demographics.loc['ic3study00019-session1-versionA',:] = pat_demographics.loc['ic3study00019-session2-versionB',:].values.tolist()
+    pat_demographics.loc['ic3study00035-session2-versionB',:] = pat_demographics.loc['ic3study00035-session1-versionA',:].values.tolist()
+    pat_demographics.loc['ic3study00041-session2-versionB',:] = pat_demographics.loc['ic3study00041-session1-versionA',:].values.tolist()
+    pat_demographics.loc['ic3study00041-session2-versionB','device'] = 'Tablet'
+    pat_demographics.loc['ic3study00050-session1-versionA',:] = pat_demographics.loc['ic3study00050-session2-versionB',:].values.tolist()
+    pat_demographics.loc['ic3study00050-session1-versionA','device'] = 'Tablet'
+    pat_demographics.loc['ic3study00051-session1-versionA',:] = pat_demographics.loc['00051-session2-versionB',:].values.tolist()
+    pat_demographics.loc['ic3study00051-session1-versionA','device'] = 'Tablet'
+    pat_demographics.loc['ic3study00095-session1-versionA',:] = pat_demographics.loc['ic3study00095-session2-versionB',:].values.tolist()
+    pat_demographics.drop(columns='user_id', inplace=True)
+    pat_demographics.reset_index(drop=False,inplace=True)
 
     # Ensure education is of integer type
     pat_demographics['education'] = pat_demographics['education'].astype(int)
@@ -1110,6 +1118,7 @@ def demographics_preproc(root_path, merged_data_folder, output_clean_folder, que
 
     # Adjust numerical columns by subtracting 0.5 (from gender to education_postBachelors)
     cols_to_adjust = one_hot_encoded_data.loc[:, 'gender':'education_postBachelors'].columns
+    
     one_hot_encoded_data[cols_to_adjust] = one_hot_encoded_data[cols_to_adjust] - 0.5
 
     # Save the final DataFrame
@@ -1337,6 +1346,9 @@ def pear_cancellation_preproc(df,df_raw):
     
     df_raw.loc[df_raw.RT<200,'RT'] = np.nan
     df_raw.loc[df_raw.RT>30000,'RT'] = np.nan
+    
+    df_raw.PearNumber.replace('undefined', np.nan, inplace=True)
+    df_raw.PearNumber = df_raw.PearNumber.astype(float)
 
     scores = [None] * len(df.user_id)
     errors = [None] * len(df.user_id)
@@ -1355,6 +1367,7 @@ def pear_cancellation_preproc(df,df_raw):
     for count,id in enumerate(df.user_id):
         df_raw_temp = df_raw[df_raw.user_id == id]
         ids[count] = id
+
         df_raw_temp = df_raw_temp[(df_raw_temp.PearNumber > 0)]
         df_raw_temp.drop_duplicates(subset=['Response'],keep="first", inplace=True)
         
@@ -1655,8 +1668,8 @@ def semantics_preproc(df,df_raw):
         df_raw_temp = df_raw[df_raw.user_id == id]
         errors[count] = (sum(df_raw_temp.correct == False))
         temp_score = df_raw_temp.groupby("Level")["correct"].sum()
-        for x in range (len(temp_score)-1):
-            if temp_score[x] >3:
+        for x in range (len(temp_score)):
+            if (temp_score[x] >3) & (x!=5):
                 temp_score[x] = 3
         scores[count]= sum(temp_score)
         shortRTs[count]= sum(df_raw_temp.RT < 1000)
@@ -2432,8 +2445,13 @@ def rule_learning_preproc(df,df_raw):
         
     df_temp = pd.DataFrame({"user_id":id_temp, "conditionsWithShiftErrors":errorsConditions, "trialsWithShiftErrors":errorsTrials})
     df = pd.merge(df, df_temp, on='user_id')
-
     df.reset_index(drop=True,inplace=True)
+    
+    if '2' in df.loc[0,'taskID']:
+        df['taskID'] = df.loc[0,'taskID'][:-1]
+    else:
+        df['taskID'] = df.loc[0,'taskID']
+
     df_raw = df_raw[df_raw.user_id.isin(df.user_id)]
     df_raw.reset_index(drop=True,inplace=True)
     

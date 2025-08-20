@@ -1,7 +1,7 @@
 
 """
 Updated on 5th of April 2024
-@authors: Created by Valentina Giunchiglia and adapted by Dragos Gruia
+@authors: Valentina Giunchiglia and Dragos Gruia
 """
 
 import pandas as pd
@@ -194,7 +194,7 @@ def output_summary_data(df_sep, output_path, folder_structure):
                 if 'Unnamed: 0' in df_task.columns:
                     df_task = df_task.drop(columns=['Unnamed: 0'])
             else:
-                continue
+                continue  
         df_task.to_csv(f"{output_new_path}/{task}.csv")
 
         
@@ -248,6 +248,7 @@ def output_trial_data(df_trial_level, df_sep, output_path, folder_structure):
             else:
                 continue
         dff.to_csv(f"{output_new_path}/{task}_raw.csv")
+
 
     
 def output_speech(output_path, folder_structure):
@@ -462,7 +463,11 @@ def output_speech(output_path, folder_structure):
                         temp_name = temp_trial_data.Target.iloc[count].upper() + '_' + str(count) + '_' + task + '_' + user_id + '.ogg'
                         
                     test_wav = open(temp_name,"wb")
-                    temp_bin = b64decode(tempVoice)
+                    try:
+                        temp_bin = b64decode(tempVoice)
+                    except:
+                        test_wav.close()
+                        print(f'Failed to convert to speech for {user_id} and {task}')
                     test_wav.write(temp_bin)
                     test_wav.close()
     
@@ -476,6 +481,9 @@ def load_json(path_to_json):
     with open(path_to_json) as f:
         for line in f:
             data.append(json.loads(line))
+
+#    with open(path_to_json, 'r', encoding='utf-8') as f:
+#        data = json.load(f)
 
     df = pd.DataFrame(data) 
     return df
@@ -711,16 +719,22 @@ def task_specific_cleaning(dfdata):
     Dataframe containing harmonised clinical task data for each participant
     
     '''
+    
 
     for count,data in dfdata.iterrows():
+        
+        if not "\\\\n" in dfdata.loc[count,'Rawdata']: 
+            dfdata.loc[count,'Rawdata'] = dfdata.loc[count,'Rawdata'].replace('\n', '\\n')
+            dfdata.loc[count,'Rawdata'] = dfdata.loc[count,'Rawdata'].replace('\t', '\\t')
+        
         if (dfdata.taskID[count] == "IC3_NVtrailMaking") or (dfdata.taskID[count] == "IC3_NVtrailMaking2"):
 
-            if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
+
+            if "Task Skipped" in  dfdata.loc[count,'Rawdata']:
                 dfdata.loc[count,'Rawdata'] = np.nan
                 continue
             else:
                 dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
-            
             splitdata = dfdata.loc[count,'Rawdata'].split('\\n')
             start_index = int(np.round(len(splitdata)/2) - 1)
             end_index = len(splitdata) - 1
@@ -739,8 +753,7 @@ def task_specific_cleaning(dfdata):
             
         elif dfdata.taskID[count] == "IC3_NVtrailMaking3":
             
-            
-            if dfdata.loc[count,'Rawdata'] == '"Task Skipped"':
+            if "Task Skipped" in  dfdata.loc[count,'Rawdata']:
                 dfdata.loc[count,'Rawdata'] = np.nan
                 continue
             else:
@@ -805,7 +818,10 @@ def task_specific_cleaning(dfdata):
                     
             splitdata = '\\n'.join(splitdata)
             dfdata.loc[count,'Rawdata'] = splitdata 
-        elif (dfdata.taskID[count] == "IC3_BBCrs_blocks"):
+        elif ((dfdata.taskID[count] == "IC3_BBCrs_blocks") | (dfdata.taskID[count] == "IC3_blocks")):
+            
+            if dfdata.taskID[count] == "IC3_blocks":
+                dfdata.taskID[count] = "IC3_BBCrs_blocks" 
             
             dfdata.loc[count,'Rawdata']= re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             
@@ -847,6 +863,16 @@ def task_specific_cleaning(dfdata):
             
             dfdata.loc[count,'Rawdata'] = re.split("GMT", dfdata.loc[count,'Rawdata'])[0] + 'GMT' + re.split("GMT", dfdata.loc[count,'Rawdata'])[-1]
             dfdata.loc[count,'Rawdata'] = re.sub(r'(\\t+)\1', r'\1', dfdata.loc[count,'Rawdata'])
+            
+        elif dfdata.taskID[count] == "IC3rs_oddOneOut":
+            
+            dfdata.taskID[count] = "IC3_rs_oddOneOut" 
+            
+        elif dfdata.taskID[count] == "IC3_TaskRecallV2":
+            
+            dfdata.taskID[count] = "IC3_TaskRecall" 
+            
+            
             
     dfdata.dropna(subset=['Rawdata'], inplace=True)
     dfdata.reset_index(drop = True, inplace=True)

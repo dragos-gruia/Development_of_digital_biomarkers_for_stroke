@@ -90,11 +90,11 @@ def format_and_summarise_data(path_to_clinical_data, path_to_deviation, task_lis
 
 def group_difference_analysis(df_final, task_list, optional_domain_names=None):
     """
-    Analyze group differences for a set of tasks using one-sample t-tests.
+    Analyze group differences for a set of tasks using non-parametric permutation tests.
 
-    This function performs one-sample t-tests on the specified task columns in the 
+    This function performs one-sample permutation test on the specified task columns in the 
     input DataFrame, testing whether the mean of each task differs significantly 
-    from zero. 
+    from zero (mean of controls). Results are corrected for multiple comparisons.
 
     Parameters
     ----------
@@ -137,8 +137,8 @@ def group_difference_analysis(df_final, task_list, optional_domain_names=None):
     # Calculate Cohen's d as |mean / std|
     effect_sizes = (means / stds).abs().round(2)
 
-    # Compute one-sample t-test p-values for each task column.
-    pvals = df_tasks.apply(lambda col: st.ttest_1samp(col.dropna(), popmean=0)[1])
+    # Compute one-sample permutation test for each task column.
+    pvals = df_tasks.apply(lambda col: permutation_test_mean(col.dropna()))
     
     # Apply FDR correction to the p-values.
     _, pvals_corrected = fdrcorrection(pvals, alpha=0.05)
@@ -159,6 +159,49 @@ def group_difference_analysis(df_final, task_list, optional_domain_names=None):
         df_results['Domain'] = optional_domain_names
 
     return df_results
+
+def permutation_test_mean(data,mu0=0,n_permutations=50_000,alternative='two-sided',random_state=42):
+    """
+    One-sample permutation test for the mean (sign-flip method).
+
+    Parameters
+    ----------
+    data : array-like
+        Your sample of observations.
+    mu0 : float, default 0
+        Null-hypothesis mean to test against.
+    n_permutations : int, default 50000
+        How many random sign flips to generate.
+    alternative : {'two-sided', 'greater', 'less'}, default 'two-sided'
+        Tail of the test.
+    random_state : int or None
+        RNG seed for reproducibility.
+
+    Returns
+    -------
+    float
+        p-value of the permutation test.
+    """
+    
+    rng = np.random.default_rng(random_state)
+    x = np.asarray(data) - mu0          # shift so H0 is "mean == 0"
+    obs = x.mean()                      # observed test statistic
+
+    # Generate a matrix of random ±1 with shape (n_permutations, n_obs)
+    signs = rng.choice((-1, 1), size=(n_permutations, x.size))
+    perm_means = (signs * x).mean(axis=1)
+
+    if alternative == 'two-sided':
+        p = (np.abs(perm_means) >= abs(obs)).mean()
+    elif alternative == 'greater':      # H1: mean > mu0
+        p = (perm_means >= obs).mean()
+    else:                               # 'less', H1: mean < mu0
+        p = (perm_means <= obs).mean()
+
+    # add the observed case itself for an unbiased estimate
+    p = (p * n_permutations + 1) / (n_permutations + 1)
+    return p
+
 
 def plot_group_difference_analysis(df_final, task_list, optional_domain_names):
     
